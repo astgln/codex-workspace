@@ -166,6 +166,8 @@ def submit(state, uid, owner, body, now):
     item = dict(id=ident, source=source, channel='web', sender=uid, message=0,
         thread=thread, text=text, snapshot=fingerprint, created=now, expires=now + domain.APPROVAL_TTL,
         status='awaiting_approval', nonce=secrets.token_urlsafe(18), card='disabled', reply='none', events=[], attachments=attachments)
+    if is_owner(state, uid, owner):
+        item.update(status='approved', approved_by=uid, decision_at=now)
     state['items'][str(ident)] = item
     for attachment in attachments:
         state['uploads'][attachment['id']]['used_by']=ident

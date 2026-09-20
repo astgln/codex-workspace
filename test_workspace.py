@@ -22,6 +22,31 @@ class WorkspaceTests(unittest.TestCase):
     def submit(self):
         return m.submit(self.s, 20, 'owner', self.body, 1001)
 
+    def test_owner_submit_is_immediately_collectable_and_idempotent(self):
+        item = m.submit(self.s, 10, 'owner', self.body, 1001)
+        self.assertEqual(item['status'], 'approved')
+        stored = self.s['items'][str(item['id'])]
+        self.assertEqual((stored['approved_by'], stored['decision_at']), (10, 1001))
+        retry = m.submit(self.s, 10, 'owner', self.body, 1002)
+        self.assertEqual(retry['id'], item['id'])
+        self.assertEqual(len(self.s['items']), 1)
+        self.assertEqual(m.collect(self.s, 1003, 'owner')['id'], item['id'])
+        self.assertIsNone(m.collect(self.s, 1003, 'owner'))
+
+    def test_member_cannot_claim_owner_role_in_submission(self):
+        item = m.submit(self.s, 20, 'owner', {
+            **self.body, 'owner': True, 'role': 'owner', 'sender': 10,
+            'status': 'approved', 'approved_by': 10}, 1001)
+        self.assertEqual(item['status'], 'awaiting_approval')
+        self.assertEqual(item['sender'], 20)
+        self.assertIsNone(m.collect(self.s, 1002, 'owner'))
+
+    def test_owner_cannot_submit_to_read_only_task(self):
+        self.catalog['threads'][0]['read_only'] = True
+        m.sync_catalog(self.s, self.catalog, self.project, 1001)
+        with self.assertRaises(m.Forbidden):
+            m.submit(self.s, 10, 'owner', self.body, 1002)
+
     def test_read_only_task_keeps_history_access_but_rejects_dispatch(self):
         item=self.submit()
         m.decision(self.s,10,'owner',{'id':item['id'],'snapshot':item['snapshot'],'decision':'approved'},1002)
