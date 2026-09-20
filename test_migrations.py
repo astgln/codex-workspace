@@ -96,3 +96,12 @@ class MigrationTests(unittest.TestCase):
         with self.assertRaises(FileExistsError):
             migrations.restore_legacy_copy(self.path, target)
         self.assertEqual(store.mutate(copy.deepcopy), expected)
+
+    def test_deployment_rehearsal_preserves_source_and_private_backup(self):
+        from server.migration_check import prepare
+        backup = prepare(self.path, Path(self.temp.name) / 'backups')
+        self.assertEqual(backup.stat().st_mode & 0o777, 0o600)
+        for path in (self.path, backup):
+            with database(path) as db:
+                self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 0)
+                self.assertEqual(json.loads(db.execute('SELECT value FROM mailbox').fetchone()[0]), self.state)

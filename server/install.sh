@@ -21,6 +21,10 @@ chmod 700 /var/lib/codex-workspace
 for database_file in /var/lib/codex-workspace/workspace.sqlite3 /var/lib/codex-workspace/workspace.sqlite3-wal /var/lib/codex-workspace/workspace.sqlite3-shm; do
     [ ! -f "$database_file" ] || chmod 600 "$database_file"
 done
+# Rehearse against a consistent copy before changing the running release.
+if [ -f /var/lib/codex-workspace/workspace.sqlite3 ]; then
+    /opt/codex-workspace/venv/bin/python -m server.migration_check /var/lib/codex-workspace/workspace.sqlite3 /var/lib/codex-workspace/migration-backups
+fi
 ln -sfn "$release" /opt/codex-workspace/current
 cp "$release/server/codex-workspace.service" /etc/systemd/system/codex-workspace.service
 systemctl daemon-reload
