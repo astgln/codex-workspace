@@ -119,4 +119,15 @@ SQLite integrity, no foreign-key errors, no duplicate access fields in the
 residual mailbox, preserved history/session tables and healthy active service.
 Validation: 169 Python tests and 21 browser tests passed; production browser
 login/member acceptance and iOS push are separate outstanding checks.
-The local CLI worker has not been restarted to load its refactored modules yet.
+The local CLI worker was subsequently updated at an idle checkpoint under the
+queue lock. launchd and a fresh heartbeat confirmed the new process running idle.
+
+
+## Cooperative worker lifecycle
+
+SIGTERM/SIGINT request a stop, wake an idle wait and prevent dispatch after
+preflight. The loop finishes an already accepted synchronous CLI call and its
+publication cycle before exiting. External force-kill/service-manager deadlines
+can still interrupt a process; durable intent remains necessary for recovery.
+Updates must still take the transport lock and reject an active dispatch before
+restarting the service. Desktop is not restarted. Validation: 171 Python tests.
