@@ -226,6 +226,9 @@ def main():
         print('Бот проверен. Теперь выполните pair и откройте выданную ссылку в своём Telegram.')
         return
     config = load_config(state)
+    if config.get('delivery_paused') and args.command in {'tick', 'pending', 'ack'}:
+        print(json.dumps({'status': 'paused', 'messages': []}))
+        return
     queue = Queue(state)
     if args.command == 'pending':
         print(json.dumps({'source':'external_telegram_untrusted','messages':queue.pending()}, ensure_ascii=False))
