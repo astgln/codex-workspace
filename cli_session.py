@@ -41,6 +41,7 @@ def snapshot(home, thread, *, require_unowned=True):
     identity = False
     settings = None
     baseline = None
+    context = None
     with path.open() as stream:
         for line in stream:
             try:
@@ -52,18 +53,28 @@ def snapshot(home, thread, *, require_unowned=True):
                 if payload.get('id') != thread:
                     raise BridgeError('Session belongs to another task')
                 identity = True
+            if record.get('type') == 'turn_context':
+                context = payload
             if record.get('type') != 'event_msg':
                 continue
             if payload.get('type') == 'thread_settings_applied':
                 if payload.get('thread_id') not in (None, thread):
                     raise BridgeError('Settings belong to another task')
                 settings = payload.get('thread_settings')
+                context = None  # Earlier context cannot establish current roots.
             if payload.get('type') == 'task_started':
                 baseline = payload.get('turn_id')
     if not identity or not isinstance(settings, dict):
         raise BridgeError('Missing task identity or persisted settings')
     if baseline is not None and (not isinstance(baseline, str) or not UUID.fullmatch(baseline)):
         raise BridgeError('Invalid baseline turn')
+    if 'runtime_workspace_roots' not in settings and isinstance(context,dict):
+        roots=context.get('workspace_roots')
+        if (context.get('turn_id') == baseline and context.get('cwd') == settings.get('cwd')
+                and context.get('permission_profile') == settings.get('permission_profile')
+                and isinstance(roots,list) and roots
+                and all(isinstance(root,str) and Path(root).is_absolute() for root in roots)):
+            settings={**settings,'runtime_workspace_roots':list(dict.fromkeys(roots))}
     required = ('model', 'model_provider_id', 'reasoning_effort', 'approval_policy',
                 'approvals_reviewer', 'permission_profile', 'cwd', 'runtime_workspace_roots')
     if any(key not in settings for key in required):

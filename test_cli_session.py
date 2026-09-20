@@ -47,6 +47,19 @@ class SessionTests(unittest.TestCase):
         self.write()
         with self.assertRaises(BridgeError):snapshot(self.home,T)
 
+    def test_legacy_roots_from_current_matching_turn_context(self):
+        del self.settings['runtime_workspace_roots']
+        context={'turn_id':U,'cwd':'/project','permission_profile':self.settings['permission_profile'], 'workspace_roots':['/project','/other']}
+        self.rows.append({'type':'turn_context','payload':context})
+        self.write()
+        self.assertEqual(snapshot(self.home,T)['settings']['runtime_workspace_roots'],['/project','/other'])
+        for key,value in [('cwd','/different'),('permission_profile',{'type':'other'}),('turn_id',T),('workspace_roots',['relative'])]:
+            old=context[key];context[key]=value;self.write()
+            with self.assertRaises(BridgeError):snapshot(self.home,T)
+            context[key]=old
+        self.rows.append(self.rows[1]);self.write()
+        with self.assertRaises(BridgeError):snapshot(self.home,T)
+
     def test_busy_lock_is_not_removed(self):
         folder = self.home / 'thread-writer-locks'
         folder.mkdir()
