@@ -130,6 +130,8 @@ class Deploy:
         return self.request('https://functions.yandexcloud.net/' + self.state['fn_admin'] + '?integration=raw', action)
 
     def run(self):
+        if self.state.get('vm_app_installed') or self.state.get('legacy_cloud_retired'):
+            raise RuntimeError('Cloud Functions deployment retired; use release_vm.py publish for the existing VM')
         runtime = self.resource('runtime', ['iam', 'service-account'], 'telegram-codex-runtime')
         gateway_sa = self.resource('gateway_sa', ['iam', 'service-account'], 'telegram-codex-gateway')
         db = self.resource('database', ['ydb', 'database'], 'telegram-codex', [
