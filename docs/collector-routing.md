@@ -219,3 +219,20 @@ from Codex's rate-limit events. All authorized participants receive those fields
 shows the observation and reset times; activity refreshes the sample, and an
 expired window displays “ожидаем обновления” instead of an invented balance.
 This service does not enable autonomous prompt delivery.
+
+
+### Multiple projects
+
+The authenticated collector catalog can contain a `projects` list of `{id,title}`
+entries. Each thread retains its `project_id` and must belong to one of those
+explicit entries. The top-level `project_id` remains the collector installation
+identifier for compatibility; it no longer restricts threads to a single project.
+Only project/task IDs, titles and task status are published, never local paths or
+retrieval summaries. The owner sees all catalogued projects (including empty
+ones); members see granted projects and projects containing individually granted tasks.
+Project grants include future catalogued tasks. Explicit task exclusions override
+both project and individual grants. History, attachments, push and dispatch all
+use the same effective task permissions.
+History follows the same explicit local catalog. Refresh that catalog from the
+app tools when projects or tasks are added; journal polling does not discover
+new projects by itself.

@@ -21,7 +21,7 @@ def sync_once(api, catalog, project, root, cache):
     count = 0
     pending = {t['thread'] for t in api.call('/v2/history/pending', {}).get('threads', [])}
     for thread in catalog.get('threads', []):
-        if thread.get('project_id') != project:
+        if thread.get('project_id') not in {p['id'] for p in catalog.get('projects', [{'id':project}])}:
             raise BridgeError('Project mismatch')
         ident = thread['id']
         path = locate(root, ident)

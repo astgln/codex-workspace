@@ -1,8 +1,8 @@
 import type { ResponseItem } from './types/api';
-export type Thread = { id:string; title:string; status:string; read_only?:boolean };
+export type Thread = { project_id?:string; id:string; title:string; status:string; read_only?:boolean };
 export type Attachment = {id:string;name:string;size:number;sha256:string};
 export type Message = { id:number; sender:number; thread:string; text:string; created:number; expires:number; status:string; snapshot:string; events?:ResponseItem[]; result_status?:string; attachments?:Attachment[] };
-export type WorkspaceState = {weekly_quota?:{used_percent:number;resets_at:number;observed_at:number}|null;user:{id:number;role:'owner'|'member';requires_approval?:boolean};threads:Thread[];messages:Message[];members?:{id:number;username:string;requires_approval?:boolean;threads:string[]}[];catalog_updated:number|null;collector_seen:number|null};
+export type WorkspaceState = {projects?:{id:string;title:string}[];weekly_quota?:{used_percent:number;resets_at:number;observed_at:number}|null;user:{id:number;role:'owner'|'member';requires_approval?:boolean};threads:Thread[];messages:Message[];members?:{id:number;username:string;projects?:string[];denied_threads?:string[];requires_approval?:boolean;threads:string[]}[];catalog_updated:number|null;collector_seen:number|null};
 let csrfToken = '';
 export async function signOut(){await request('/auth/logout',{});csrfToken='';}
 export async function restoreSession(){const value=await request<{csrf:string;workspace:WorkspaceState}>('/auth/session');csrfToken=value.csrf;return value.workspace;}
@@ -71,7 +71,7 @@ export function login(config:LoginConfig,signal?:AbortSignal):Promise<void>{
 export const fetchState=()=>request<WorkspaceState>('/web/state',{});
 export const sendMessage=(thread:string,text:string,request_id:string,attachments:string[]=[])=>request<Message>('/web/messages',{thread,text,request_id,attachments});
 export const decide=(message:Message,decision:'approved'|'rejected')=>request<Message>('/web/decisions',{id:message.id,snapshot:message.snapshot,decision});
-export const grant=(user_id:number,threads:string[])=>request('/web/grants',{user_id,threads});
+export const grant=(user_id:number,threads:string[],projects?:string[],denied_threads?:string[])=>request('/web/grants',{user_id,threads,projects,denied_threads});
 
 async function sha256(bytes:Uint8Array){return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes as BufferSource))).map(b=>b.toString(16).padStart(2,'0')).join('');}
 export async function uploadFile(thread:string,file:File,onProgress:(percent:number)=>void):Promise<Attachment>{

@@ -30,7 +30,7 @@ async function fixture(page: Page, role: 'owner'|'member' = 'owner') {
     } else if(path==='/web/decisions'){
       decisions.push(body); const item=state.messages.find(m=>m.id===body.id);item.status=body.decision;output=item;
     } else if(path==='/web/member-policy')state.members[0].requires_approval=body.requires_approval;
-    else if(path==='/web/grants')state.members[0].threads=body.threads;
+    else if(path==='/web/grants')Object.assign(state.members[0],{threads:body.threads,projects:body.projects||[],denied_threads:body.denied_threads||[]});
     else return route.fulfill({status:404,body:'{}'});
     await route.fulfill({json:output});
   });
@@ -293,4 +293,33 @@ test('owner controls approval independently of task access',async({page})=>{
  expect(f.state.members[0].threads).toEqual([]);
  await expect(page.getByText('Новые запросы сразу попадают в очередь Codex.')).toBeVisible();
  await toggle.click();await expect(toggle).toBeChecked();
+});
+
+test('project switch filters tasks and updates breadcrumb',async({page})=>{
+ const f=await fixture(page);
+ Object.assign(f.state,{projects:[{id:'warcraft',title:'Warcraft'},{id:'second',title:'Second'},{id:'empty',title:'Empty'}]});
+ f.state.threads.forEach(t=>Object.assign(t,{project_id:'warcraft'}));
+ f.state.threads.push({id:'thread-second',title:'Second task',status:'idle',project_id:'second'} as any);
+ await page.getByRole('button',{name:'Обновить',exact:true}).click();
+ await page.getByLabel('Проект',{exact:true}).selectOption('second');
+ await expect(page.getByRole('button',{name:'Launcher',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Открыть проект Second',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Second task',exact:true}).first().click();
+ await expect(page.locator('.header-title strong')).toHaveText('Second task');
+ await page.getByLabel('Проект',{exact:true}).selectOption('empty');
+ await expect(page.getByRole('heading',{name:'Empty',exact:true})).toBeVisible();
+});
+
+test('project access with task exclusion and independent task grant',async({page})=>{
+ const f=await fixture(page);
+ await page.getByRole('button',{name:'Доступ к тредам',exact:true}).click();
+ const project=page.getByRole('checkbox',{name:'Весь проект Warcraft для @friend',exact:true});
+ const launcher=page.getByRole('checkbox',{name:'Launcher для @friend',exact:true});
+ const hd=page.getByRole('checkbox',{name:'HD для @friend',exact:true});
+ await project.click();await expect(project).toBeChecked();await expect(launcher).toBeChecked();await expect(hd).toBeChecked();
+ await hd.click();await expect(hd).not.toBeChecked();await expect(launcher).toBeChecked();
+ await expect(page.getByText('HD · закрыта',{exact:true})).toBeVisible();
+ await project.click();await expect(project).not.toBeChecked();await expect(launcher).not.toBeChecked();
+ await launcher.click();await expect(launcher).toBeChecked();await expect(hd).not.toBeChecked();
+ expect(f.state.members[0].threads).toEqual(['thread-launcher']);
 });

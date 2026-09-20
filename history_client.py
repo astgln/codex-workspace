@@ -76,7 +76,7 @@ def main():
                 root=Path(os.environ.get('CODEX_HOME',Path.home()/'.codex'))/'sessions'
                 result={'threads':[]}
                 for thread in catalog.get('threads',[]):
-                    if thread.get('project_id')!=config['project_id']:raise BridgeError('Project mismatch')
+                    if thread.get('project_id') not in {p['id'] for p in catalog.get('projects',[{'id':config['project_id']}])}:raise BridgeError('Project mismatch')
                     read=read_public(locate(root,thread['id']),thread['id'])
                     result['threads'].append({'thread':thread['id'],**publish(api,read,'older')})
             else:

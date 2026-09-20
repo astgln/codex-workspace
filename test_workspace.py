@@ -162,5 +162,41 @@ class WorkspaceTests(unittest.TestCase):
         m.set_grants(self.s,10,'owner',{'user_id':20,'threads':[]})
         self.assertIsNone(m.collect(self.s,1003,'owner'))
 
+    def test_all_projects_for_owner_but_only_granted_projects_for_member(self):
+        catalog={**self.catalog,'projects':[{'id':self.project,'title':'Warcraft'},{'id':'project-second','title':'Second'},{'id':'project-empty','title':'Empty'}],
+            'threads':self.catalog['threads']+[{'id':'thread-second','title':'Other task','project_id':'project-second'}]}
+        m.sync_catalog(self.s,catalog,self.project,1001)
+        self.assertEqual(len(m.view(self.s,10,'owner',1002)['projects']),3)
+        member=m.view(self.s,20,'owner',1002)
+        self.assertEqual([p['id'] for p in member['projects']],[self.project])
+        self.assertEqual([t['id'] for t in member['threads']],['thread-launcher'])
+        with self.assertRaises(m.Forbidden):m.submit(self.s,20,'owner',{**self.body,'thread':'thread-second'},1002)
+        m.set_grants(self.s,10,'owner',{'user_id':20,'threads':['thread-second']})
+        self.assertEqual([p['id'] for p in m.view(self.s,20,'owner',1003)['projects']],['project-second'])
+        catalog['threads'][-1]['project_id']='unlisted-project'
+        with self.assertRaises(d.Rejected):m.sync_catalog(self.s,catalog,self.project,1004)
+
+    def test_project_grant_inherits_new_tasks_but_denial_wins(self):
+        m.set_grants(self.s,10,'owner',{'user_id':20,'threads':[], 'projects':[self.project], 'denied_threads':['thread-private1']})
+        self.assertEqual(set(m.permitted_threads(self.s,20,'owner')),{'thread-launcher'})
+        expanded={**self.catalog,'threads':self.catalog['threads']+[{'id':'thread-future1','title':'New task','project_id':self.project}]}
+        m.sync_catalog(self.s,expanded,self.project,1001)
+        self.assertEqual(set(m.permitted_threads(self.s,20,'owner')),{'thread-launcher','thread-future1'})
+        with self.assertRaises(m.Forbidden):m.submit(self.s,20,'owner',{**self.body,'thread':'thread-private1'},1002)
+        m.set_grants(self.s,10,'owner',{'user_id':20,'threads':['thread-private1'], 'projects':[self.project], 'denied_threads':['thread-private1']})
+        self.assertNotIn('thread-private1',m.permitted_threads(self.s,20,'owner'))
+        m.set_grants(self.s,10,'owner',{'user_id':20,'threads':['thread-private1'], 'projects':[], 'denied_threads':[]})
+        self.assertEqual(set(m.permitted_threads(self.s,20,'owner')),{'thread-private1'})
+
+    def test_task_exclusion_revokes_pending_dispatch(self):
+        m.set_grants(self.s,10,'owner',{'user_id':20,'threads':[], 'projects':[self.project], 'denied_threads':[]})
+        m.set_member_policy(self.s,10,'owner',{'user_id':20,'requires_approval':False})
+        item=self.submit()
+        m.set_grants(self.s,10,'owner',{'user_id':20,'threads':[], 'projects':[self.project], 'denied_threads':['thread-launcher']})
+        self.assertEqual(self.s['items'][str(item['id'])]['status'],'target_unavailable')
+        self.assertIsNone(m.collect(self.s,1003,'owner'))
+        for invalid in ({'projects':['missing']},{'denied_threads':['missing']}):
+            with self.assertRaises(d.Rejected):m.set_grants(self.s,10,'owner',{'user_id':20,'threads':[],**invalid})
+
 
 if __name__ == '__main__': unittest.main()

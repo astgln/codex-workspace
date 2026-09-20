@@ -68,20 +68,30 @@ def is_owner(state, uid, owner):
 def sync_catalog(state, body, project, now):
     if body.get('project_id') != project:
         raise Forbidden()
+    project_entries = body.get('projects', [{'id':project,'title':'Warcraft'}])
+    if not isinstance(project_entries,list) or len(project_entries)>100:
+        raise domain.Rejected('Invalid projects')
+    projects={}
+    for entry in project_entries:
+        if (not isinstance(entry,dict) or not isinstance(entry.get('id'),str) or not re.fullmatch(r'[a-zA-Z0-9-]{1,80}',entry['id'])
+                or not isinstance(entry.get('title'),str) or not 1<=len(entry['title'])<=200 or entry['id'] in projects):
+            raise domain.Rejected('Invalid project')
+        projects[entry['id']]={'id':entry['id'],'title':entry['title']}
     entries = body.get('threads')
-    if not isinstance(entries, list) or len(entries) > 100:
+    if not isinstance(entries, list) or len(entries) > 1000:
         raise domain.Rejected('Invalid catalog')
     catalog = {}
     for entry in entries:
         if (not isinstance(entry, dict) or not re.fullmatch(r'[a-zA-Z0-9-]{10,80}', str(entry.get('id', '')))
-                or entry.get('project_id') != project or not isinstance(entry.get('title'), str)
+                or entry.get('project_id') not in projects or not isinstance(entry.get('title'), str)
                 or not 1 <= len(entry['title']) <= 200):
             raise domain.Rejected('Invalid thread')
         if entry['id'] in catalog:
             raise domain.Rejected('Duplicate thread')
-        catalog[entry['id']] = {'id': entry['id'], 'title': entry['title'],
+        catalog[entry['id']] = {'id': entry['id'], 'title': entry['title'], 'project_id':entry['project_id'],
             'status': entry.get('status') if entry.get('status') in ('active', 'idle', 'notLoaded') else 'unknown',
             'read_only': entry.get('read_only') is True}
+    state['projects'] = projects
     state['catalog'] = catalog
     state['catalog_updated'] = now
     # Revoking a target immediately stops every not-yet-delivered request to it.
@@ -96,18 +106,29 @@ def permitted_threads(state, uid, owner):
     if is_owner(state, uid, owner):
         return catalog
     grants = state.get('thread_grants', {}).get(str(uid), [])
-    return {key: value for key, value in catalog.items() if key in grants}
+    projects = state.get('project_grants', {}).get(str(uid), [])
+    denied = state.get('thread_denies', {}).get(str(uid), [])
+    return {key: value for key, value in catalog.items()
+            if key not in denied and (key in grants or value.get('project_id') in projects)}
 
 
 def set_grants(state, uid, owner, body):
     if not is_owner(state, uid, owner):
         raise Forbidden()
     target, threads = body.get('user_id'), body.get('threads')
-    if target not in state['bindings'].values() or not isinstance(threads, list) or not all(t in state.get('catalog', {}) for t in threads):
+    projects = body.get('projects', state.get('project_grants', {}).get(str(target), []))
+    denied = body.get('denied_threads', state.get('thread_denies', {}).get(str(target), []))
+    if (type(target) is not int or target not in state['bindings'].values() or target == uid
+            or not isinstance(threads, list) or not all(isinstance(t,str) and t in state.get('catalog', {}) for t in threads)
+            or not isinstance(projects,list) or not all(isinstance(p,str) and p in state.get('projects',{}) for p in projects)
+            or not isinstance(denied,list) or not all(isinstance(t,str) and t in state.get('catalog',{}) for t in denied)):
         raise domain.Rejected('Invalid grant')
     state.setdefault('thread_grants', {})[str(target)] = list(dict.fromkeys(threads))
+    state.setdefault('project_grants', {})[str(target)] = list(dict.fromkeys(projects))
+    state.setdefault('thread_denies', {})[str(target)] = list(dict.fromkeys(denied))
+    allowed=permitted_threads(state,target,owner)
     for item in state['items'].values():
-        if item.get('channel') == 'web' and item['sender'] == target and item['thread'] not in threads and item['status'] in ('approved', 'awaiting_approval'):
+        if item.get('channel') == 'web' and item['sender'] == target and item['thread'] not in allowed and item['status'] in ('approved', 'awaiting_approval'):
             item['status'] = 'target_unavailable'
     return {'ok': True}
 
@@ -140,9 +161,11 @@ def view(state, uid, owner, now):
               'threads': list(catalog.values()), 'catalog_updated': state.get('catalog_updated'),
               'collector_seen': state.get('collector_seen'), 'messages': [public_item(item) for item in state['items'].values()
                 if item.get('channel') == 'web' and (admin or item['thread'] in catalog)]}
+    visible_projects={t.get('project_id') for t in catalog.values()} | set(state.get('project_grants',{}).get(str(uid),[]))
+    result['projects']=[p for p in state.get('projects',{}).values() if admin or p['id'] in visible_projects]
     result['weekly_quota'] = state.get('weekly_quota')
     if admin:
-        result['members'] = [{'id': ident, 'username': name, 'requires_approval': requires_approval(state, ident, owner), 'threads': state.get('thread_grants', {}).get(str(ident), [])}
+        result['members'] = [{'id': ident, 'username': name, 'requires_approval': requires_approval(state, ident, owner), 'projects':state.get('project_grants',{}).get(str(ident),[]), 'denied_threads':state.get('thread_denies',{}).get(str(ident),[]), 'threads': state.get('thread_grants', {}).get(str(ident), [])}
                              for name, ident in state['bindings'].items() if name != owner]
     return result
 

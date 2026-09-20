@@ -21,3 +21,14 @@ class WatchTests(unittest.TestCase):
      sync_once(api,catalog,'project',Path(tmp),cache)
    self.assertEqual(cache['task']['offset'],path.stat().st_size)
    self.assertEqual(len([p for p,d in api.calls if p.endswith('/publish')]),2)
+ def test_explicit_multiple_projects_only(self):
+  class API:
+   def call(self,path,data):return {'threads':[]}
+  from bridge import BridgeError
+  with tempfile.TemporaryDirectory() as tmp:
+   path=Path(tmp)/'journal';path.write_text(json.dumps({'type':'session_meta','payload':{'id':'task'}})+'\n')
+   catalog={'project_id':'installation','projects':[{'id':'other'}],'threads':[{'id':'task','project_id':'other'}]}
+   with patch('history_watch.locate',return_value=path):
+    sync_once(API(),catalog,'installation',Path(tmp),{})
+    catalog['threads'][0]['project_id']='not-authorized'
+    with self.assertRaises(BridgeError):sync_once(API(),catalog,'installation',Path(tmp),{})
