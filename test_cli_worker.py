@@ -22,6 +22,8 @@ class WorkerTests(unittest.TestCase):
         folder=self.home/'sessions/2026/09/21';folder.mkdir(parents=True)
         self.path=folder/f'rollout-test-{T}.jsonl'
         self.path.write_text(json.dumps({'type':'session_meta','payload':{'id':T}})+'\n')
+        with self.path.open('a') as out:
+            out.write(json.dumps({'type':'event_msg','payload':{'type':'task_complete','turn_id':U}})+'\n')
         self.catalog={'threads':[{'id':T}]}
         self.state={'status':'ready','baseline':U,'thread':T,'settings':{'cwd':str(self.home)}}
         self.calls=0
@@ -29,6 +31,7 @@ class WorkerTests(unittest.TestCase):
     def run_cli(self,args,**kwargs):
         self.calls+=1
         self.assertEqual(kwargs['input'].count('$(touch SHOULD_NOT_EXIST)'),1)
+        self.assertEqual(kwargs['input'],'$(touch SHOULD_NOT_EXIST)')
         self.assertNotIn('shell',kwargs)
         with self.path.open('a') as out:
             for payload in [

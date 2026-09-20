@@ -48,6 +48,7 @@ class RolloutTests(unittest.TestCase):
     def cli_rows(self):
         rows=self.records()
         rows[1]=self.item({'type':'UserMessage','id':'input','content':[{'type':'text','text':M}]})
+        rows.insert(1,{'type':'event_msg','payload':{'type':'task_complete','turn_id':V}})
         return rows
 
     def cli_result(self,rows,baseline=V):
@@ -60,14 +61,20 @@ class RolloutTests(unittest.TestCase):
         self.assertEqual(self.cli_result(rows)['events'],[{'type':'agent_message','text':'Public answer'}])
 
     def test_cli_rejects_duplicate_and_old_turn(self):
-        with self.assertRaises(BridgeError):self.cli_result(self.cli_rows(),U)
+        self.assertIsNone(self.cli_result(self.cli_rows(),U))
         rows=self.cli_rows()
-        duplicate=self.cli_rows()[1];duplicate['payload']['turn_id']=V
+        duplicate=self.cli_rows()[2];duplicate['payload']['turn_id']=S
         with self.assertRaises(BridgeError):self.cli_result(rows+[duplicate])
+
+    def test_cli_repeated_text_before_baseline_is_not_duplicate(self):
+        rows=self.cli_rows()
+        old=self.item({'type':'UserMessage','id':'old','content':[{'type':'text','text':M}]},S)
+        rows.insert(1,old)
+        self.assertEqual(self.cli_result(rows)['turn_id'],U)
 
     def test_cli_requires_completed_exact_user_input(self):
         self.assertIsNone(self.cli_result(self.cli_rows()[:-1]))
-        rows=self.cli_rows();rows[1]['payload']['item']['content'][0]['text']='quoted '+M
+        rows=self.cli_rows();rows[2]['payload']['item']['content'][0]['text']='quoted '+M
         self.assertIsNone(self.cli_result(rows))
-        rows=self.cli_rows();rows[1]['payload']['item']['type']='FunctionCallOutput'
+        rows=self.cli_rows();rows[2]['payload']['item']['type']='FunctionCallOutput'
         self.assertIsNone(self.cli_result(rows))

@@ -71,6 +71,7 @@ def recover_cli(path, thread, prompt, baseline):
     finals = {}
     completed = set()
     identity = False
+    after_baseline = baseline is None
     with path.open() as stream:
         for line in stream:
             try:
@@ -85,6 +86,8 @@ def recover_cli(path, thread, prompt, baseline):
             if record.get('type') != 'event_msg':
                 continue
             turn = payload.get('turn_id')
+            if turn == baseline and payload.get('type') in ('task_started', 'task_complete'):
+                after_baseline = True
             if payload.get('type') == 'task_complete':
                 completed.add(turn)
             if payload.get('type') != 'item_completed' or payload.get('thread_id') != thread:
@@ -94,7 +97,8 @@ def recover_cli(path, thread, prompt, baseline):
             if item.get('type') == 'UserMessage':
                 texts = [c.get('text') for c in content if c.get('type') == 'text']
                 if texts == [prompt]:
-                    matched.add(turn)
+                    if after_baseline and turn != baseline:
+                        matched.add(turn)
             if item.get('type') == 'AgentMessage' and item.get('phase') == 'final_answer':
                 texts = [c['text'] for c in content if c.get('type') == 'Text' and isinstance(c.get('text'), str)]
                 if texts:
