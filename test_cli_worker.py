@@ -68,7 +68,7 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(self.dispatch()['status'],'idle')
         self.assertEqual(self.q.pending()['messages'][0]['local_status'],'pending')
 
-    def shared(self, *, active=False, fail=False):
+    def shared(self, *, active=False, fail=False, slow=False):
         owner=self
         class Client:
             def __init__(self,socket):pass
@@ -79,11 +79,12 @@ class WorkerTests(unittest.TestCase):
                     return {'thread':{'status':{'type':'active' if active else 'idle'}}}
                 if method=='turn/start':
                     if fail:raise OSError('connection lost')
-                    owner.run_cli([],input=params['input'][0]['text'])
+                    if not slow:owner.run_cli([],input=params['input'][0]['text'])
                     return {'turn':{'id':V}}
                 raise AssertionError(method)
             async def wait_completed(self,thread,turn):
                 owner.assertEqual((thread,turn),(T,V))
+                if slow:raise TimeoutError()
                 return {'id':V,'status':'completed'}
         with patch('cli_worker.snapshot',return_value=self.state):
             return asyncio.run(dispatch_shared(self.q,self.home,self.home/'socket',self.catalog,Client))
@@ -105,3 +106,17 @@ class WorkerTests(unittest.TestCase):
         with self.assertRaises(OSError):self.shared(fail=True)
         self.assertEqual(self.shared()['status'],'needs_reconciliation')
         self.assertEqual(self.calls,0)
+
+    def test_shared_slow_turn_is_collected_later_without_resubmitting(self):
+        self.assertEqual(self.shared(slow=True), {'status':'awaiting_completion','id':-1})
+        row=self.q.db.execute('SELECT * FROM requests').fetchone()
+        self.assertEqual(row['status'],'dispatched')
+        self.assertEqual(json.loads(row['dispatch'])['turn_id'],V)
+        self.assertEqual(self.shared()['status'],'needs_reconciliation')
+        self.assertEqual(self.calls,0)
+        self.run_cli([],input='$(touch SHOULD_NOT_EXIST)')
+        self.assertEqual(self.shared()['status'],'idle')
+        row=self.q.db.execute('SELECT * FROM requests').fetchone()
+        self.assertEqual(row['status'],'publishing')
+        self.assertEqual(json.loads(row['result'])['events'],[{'type':'agent_message','text':'reply'}])
+        self.assertEqual(self.calls,1)

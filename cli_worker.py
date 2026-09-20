@@ -78,7 +78,12 @@ async def dispatch_shared(queue, home, socket, catalog, client_factory=None):
                     dispatch['turn_id']=turn
                     queue.db.execute('UPDATE requests SET dispatch=? WHERE id=?',(json.dumps(dispatch),item['id']))
                 queue.sent(item['id'],request['marker'])
-                await client.wait_completed(item['thread'],turn)
+                try:
+                    await client.wait_completed(item['thread'],turn)
+                except TimeoutError:
+                    # The accepted turn may still be running. Keep its durable ID
+                    # and collect the persisted reply on later polling cycles.
+                    return {'status':'awaiting_completion','id':item['id']}
                 row=queue.db.execute('SELECT * FROM requests WHERE id=?',(item['id'],)).fetchone()
                 matched=collect(queue,home,row)
                 return {'status':'completed' if matched else 'awaiting_persisted_reply','id':item['id']}
