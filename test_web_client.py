@@ -135,3 +135,19 @@ class CollectorTests(unittest.TestCase):
 
 
 if __name__ == '__main__': unittest.main()
+
+
+class WaitTests(unittest.TestCase):
+    def test_wait_returns_pending_work_without_dispatch(self):
+        from web_client import wait_for_request
+        from unittest.mock import Mock
+        queue=Mock();queue.pending.return_value={'messages':[{'id':-3}],'trust':'external'}
+        self.assertEqual(wait_for_request(queue,object())['status'],'ready')
+        queue.begin.assert_not_called();queue.sent.assert_not_called()
+    def test_wait_sleeps_and_returns_empty_timeout(self):
+        from web_client import wait_for_request
+        from unittest.mock import Mock,patch
+        queue=Mock();queue.pending.return_value={'messages':[]}
+        with patch('web_client.time.monotonic',side_effect=[0,0,2]),patch('web_client.time.sleep') as sleep:
+            self.assertEqual(wait_for_request(queue,object(),2,1),{'status':'timeout','messages':[]})
+            sleep.assert_called_once_with(1)

@@ -187,12 +187,31 @@ class Queue:
         return {'counts': [dict(r) for r in self.db.execute('SELECT status,count(*) AS count FROM requests GROUP BY status')]}
 
 
+def wait_for_request(queue,api,timeout=50,interval=5):
+    """Wait for work without invoking a model or dispatching anything.
+
+    A running Codex turn can await this command and use its existing app tools
+    after it returns. This does not wake an idle or stopped Codex task.
+    """
+    if not 1<=timeout<=300 or not 1<=interval<=30:
+        raise BridgeError('Invalid polling interval or timeout')
+    deadline=time.monotonic()+timeout
+    while True:
+        queue.tick(api)
+        pending=queue.pending()
+        if pending['messages']:return {'status':'ready',**pending}
+        remaining=deadline-time.monotonic()
+        if remaining<=0:return {'status':'timeout','messages':[]}
+        time.sleep(min(interval,remaining))
+
+
 def main():
     os.umask(0o077)
     parser = argparse.ArgumentParser()
     parser.add_argument('--state', type=Path, default=STATE)
     sub = parser.add_subparsers(dest='command', required=True)
     for name in ('tick', 'pending', 'status'): sub.add_parser(name)
+    wait=sub.add_parser('wait');wait.add_argument('--timeout',type=int,default=50);wait.add_argument('--interval',type=int,default=5)
     catalog = sub.add_parser('catalog'); catalog.add_argument('file', type=Path)
     begin = sub.add_parser('begin'); begin.add_argument('id', type=int); begin.add_argument('--thread', required=True); begin.add_argument('--baseline', required=True)
     sent = sub.add_parser('sent'); sent.add_argument('id', type=int); sent.add_argument('--marker', required=True)
@@ -212,6 +231,7 @@ def main():
                 result = API(config).call('/v2/catalog', catalog)
             elif args.command == 'tick': result = queue.tick(API(config))
             elif args.command == 'pending': result = queue.pending()
+            elif args.command == 'wait': result = wait_for_request(queue,API(config),args.timeout,args.interval)
             elif args.command == 'begin': result = queue.begin(args.id,args.thread,args.baseline)
             elif args.command == 'sent': queue.sent(args.id,args.marker); result = {'status':'dispatched'}
             elif args.command == 'collect':
