@@ -1,0 +1,9 @@
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import { App } from './App';
+import { ToastProvider } from './stores/toast';
+import { LanguageProvider } from './components/i18n/LanguageProvider';
+import './upstream.css';
+import 'katex/dist/katex.min.css';
+import './workspace.css';
+createRoot(document.getElementById('root')!).render(<React.StrictMode><LanguageProvider><ToastProvider><App/></ToastProvider></LanguageProvider></React.StrictMode>);

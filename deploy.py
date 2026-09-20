@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import mimetypes
 import os
 import re
 from pathlib import Path
@@ -41,6 +42,9 @@ class Deploy:
         if self.state.get('settings', settings) != settings:
             raise RuntimeError('Mailbox settings changed; explicit migration required')
         self.state['settings'] = settings
+        if self.state.get('project', args.project) != args.project:
+            raise RuntimeError('Project changed; explicit migration required')
+        self.state['project'] = args.project
         self.state['folder'] = args.folder
         self.iam = None
 
@@ -140,14 +144,33 @@ class Deploy:
         self.bind(['lockbox', 'secret'], self.state['secret'], 'lockbox.payloadViewer', runtime)
         package = STATE / 'function.zip'
         with zipfile.ZipFile(package, 'w', zipfile.ZIP_DEFLATED) as z:
-            for name in ['domain.py', 'runtime.py']:
+            for name in ['domain.py', 'runtime.py', 'workspace.py', 'login.py']:
                 z.write(ROOT / 'cloud' / name, 'cloud/' + name)
+            if self.args.web:
+                dist = ROOT / 'web' / 'dist'
+                if not (dist / 'index.html').is_file():
+                    raise RuntimeError('Build web assets first')
+                manifest = {}
+                for asset in sorted(dist.rglob('*')):
+                    if not asset.is_file():
+                        continue
+                    relative = asset.relative_to(dist).as_posix()
+                    route = '/' if relative == 'index.html' else '/' + relative
+                    manifest[route] = {'file': relative, 'type': mimetypes.guess_type(relative)[0] or 'application/octet-stream'}
+                    z.write(asset, 'cloud/static/' + relative)
+                z.writestr('cloud/static/files.json', json.dumps(manifest))
             z.writestr('cloud/__init__.py', '')
             z.write(ROOT / 'cloud' / 'requirements.txt', 'requirements.txt')
-        source_hash = hashlib.sha256(package.read_bytes()).hexdigest()
-        for name in ('webhook', 'api', 'worker', 'admin', 'authorizer'):
-            fn = self.resource('fn_' + name, ['serverless', 'function'], 'telegram-codex-' + name)
-            self.bind(['serverless', 'function'], fn, 'functions.functionInvoker', gateway_sa) if name in ('api', 'webhook', 'authorizer', 'worker') else None
+        digest = hashlib.sha256()
+        with zipfile.ZipFile(package) as archive:
+            for name in sorted(archive.namelist()):
+                digest.update(name.encode() + b'\0' + archive.read(name))
+        digest.update(json.dumps({'project': self.args.project, 'settings': self.state['settings']}, sort_keys=True).encode())
+        source_hash = digest.hexdigest()
+        names = ('api', 'admin', 'authorizer', 'web_api', 'website') if self.args.web else ('webhook', 'api', 'worker', 'admin', 'authorizer')
+        for name in names:
+            fn = self.resource('fn_' + name, ['serverless', 'function'], 'telegram-codex-' + name.replace('_', '-'))
+            self.bind(['serverless', 'function'], fn, 'functions.functionInvoker', gateway_sa) if name != 'admin' else None
             scaling_key = 'scaling:' + fn
             if self.state.get('version_' + name) and not self.state.get(scaling_key):
                 self.yc('serverless', 'function', 'set-scaling-policy', fn, '--tag', '$latest',
@@ -156,10 +179,10 @@ class Deploy:
             if self.state.get('version_hash_' + name) == source_hash:
                 continue
             env = {'OWNER_USERNAME': self.args.owner, 'ALLOWED_USERNAMES': '|'.join(self.args.allowed),
-                   'THREAD_ID': self.args.thread, 'CLIENT_KEY_HASH': self.state['client_hash'],
+                   'THREAD_ID': self.args.thread, 'PROJECT_ID': self.args.project, 'CLIENT_KEY_HASH': self.state['client_hash'],
                    'YDB_ENDPOINT': self.state['endpoint'], 'YDB_DATABASE': self.state['database_path']}
             flags = []
-            if name in ('webhook', 'worker', 'admin'):
+            if name in ('webhook', 'worker', 'admin', 'web_api'):
                 keys = ['WEBHOOK_SECRET'] if name == 'webhook' else ['TELEGRAM_BOT_TOKEN']
                 if name == 'admin': keys.append('WEBHOOK_SECRET')
                 for key in keys:
@@ -180,12 +203,18 @@ class Deploy:
                 'components': {'securitySchemes': {'client': {'type': 'http', 'scheme': 'bearer',
                 'x-yc-apigateway-authorizer': {'type': 'function', 'function_id': self.state['fn_authorizer'],
                  'service_account_id': gateway_sa, 'authorizer_result_ttl_in_seconds': 1}}}}}
-        for path, method, name in [('/health', 'get', 'api'), ('/telegram/webhook', 'post', 'webhook'),
-                ('/v1/inbox/claim', 'post', 'api'), ('/v1/inbox/ack', 'post', 'api'), ('/v1/replies', 'post', 'api')]:
+        routes = [('/health', 'get', 'api'), ('/telegram/webhook', 'post', 'webhook'),
+                ('/v1/inbox/claim', 'post', 'api'), ('/v1/inbox/ack', 'post', 'api'), ('/v1/replies', 'post', 'api')]
+        if self.args.web:
+            routes += [(path, 'get', 'website') for path in manifest]
+            routes += [('/web/login/config', 'get', 'web_api')]
+            routes += [(path, 'post', 'web_api') for path in ('/web/login/session','/web/state','/web/messages','/web/decisions','/web/grants')]
+            routes += [(path, 'post', 'api') for path in ('/v2/catalog','/v2/inbox/claim','/v2/inbox/ack','/v2/responses','/v2/login-keys')]
+        for path, method, name in routes:
             operation = {'responses': {'200': {'description': 'OK'}}, 'x-yc-apigateway-integration': {
                 'type': 'cloud_functions', 'function_id': self.state['fn_' + name], 'tag': '$latest',
                 'service_account_id': gateway_sa, 'payload_format_version': '1.0'}}
-            if path.startswith('/v1/'):
+            if path.startswith(('/v1/', '/v2/')):
                 operation['security'] = [{'client': []}]
             spec['paths'][path] = {method: operation}
         spec_path = STATE / 'gateway.json'
@@ -195,12 +224,23 @@ class Deploy:
         self.yc('serverless', 'api-gateway', 'update', gateway, '--spec', str(spec_path), '--no-logging')
         gateway_info = self.yc('serverless', 'api-gateway', 'get', gateway)
         self.checkpoint('url', 'https://' + gateway_info['domain'])
-        initialized = self.invoke({'action': 'initialize'})
+        initialized = self.invoke({'action': 'initialize_web' if self.args.web else 'initialize'})
         if not initialized.get('ok'):
             raise RuntimeError('Cloud initialization failed: ' + initialized.get('category', 'unknown') + '/' + initialized.get('reason', 'unknown'))
-        print('Cloud Telegram connection:', initialized.get('bot'), flush=True)
+        print('Cloud login ready' if self.args.web else 'Cloud Telegram connection: ' + str(initialized.get('bot')), flush=True)
         save(STATE / 'cloud.json', {'url': self.state['url'], 'thread': self.args.thread,
              'key_file': str(STATE / 'cloud-key.env'), 'paused': True})
+        if self.args.web:
+            from cloud.login import public_keys
+            result = self.invoke({'action':'login_keys', 'keys':public_keys(refresh=True), 'fetched_at':int(time.time())})
+            if not result.get('ok'):
+                raise RuntimeError('Public login key cache initialization failed')
+            config_path = STATE / 'web.json'
+            if not config_path.exists():
+                save(config_path, {'url':self.state['url'], 'project_id':self.args.project,
+                                  'key_file':str(STATE / 'cloud-key.env'), 'paused':False})
+            print('Website provisioned:', self.state['url'], flush=True)
+            return
         if 'timer' not in self.state:
             timer = self.yc('serverless', 'trigger', 'create', 'timer', '--name', 'telegram-codex-worker',
                 '--cron-expression', '* * * * ? *', '--invoke-function-id', self.state['fn_worker'],
@@ -223,6 +263,8 @@ def main():
     parser.add_argument('--owner', required=True)
     parser.add_argument('--allowed', nargs='+', required=True)
     parser.add_argument('--activate', action='store_true')
+    parser.add_argument('--web', action='store_true', help='Deploy standalone website without Bot API workers')
+    parser.add_argument('--project', default='')
     args = parser.parse_args()
     try:
         Deploy(args).run()

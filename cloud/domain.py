@@ -92,10 +92,11 @@ def ingest(state, update, now, owner, allowed, thread):
             del state['seen'][old_key]
 
 
-def claim(state, now):
+def claim(state, now, channel=None):
     cleanup(state, now)
     for item in state['items'].values():
-        if item['status'] == 'approved' and item.get('lease_until', 0) <= now:
+        if (item['status'] == 'approved' and item.get('lease_until', 0) <= now
+                and (channel is None or item.get('channel', 'telegram') == channel)):
             item['lease'] = secrets.token_urlsafe(24)
             item['lease_until'] = now + 120
             return {k: item[k] for k in ('id', 'text', 'thread', 'snapshot', 'lease', 'created')}

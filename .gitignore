@@ -11,3 +11,7 @@ __pycache__/
 *.tfstate.*
 *.tfvars
 *.tfvars.json
+node_modules/
+web/dist/
+web/test-results/
+web/playwright-report/
