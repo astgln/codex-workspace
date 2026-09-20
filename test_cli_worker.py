@@ -62,7 +62,7 @@ class WorkerTests(unittest.TestCase):
 
     def test_busy_and_read_only_tasks_stay_pending(self):
         self.state={'status':'busy'}
-        self.assertEqual(self.dispatch()['status'],'idle')
+        self.assertEqual(self.dispatch(),{'status':'waiting_for_tasks','requests':[{'id':-1,'reason':'desktop_writer_lock'}]})
         self.catalog['threads'][0]['read_only']=True
         self.assertEqual(self.dispatch()['status'],'idle')
         self.assertEqual(self.q.pending()['messages'][0]['local_status'],'pending')

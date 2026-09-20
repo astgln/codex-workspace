@@ -34,6 +34,7 @@ def dispatch_one(queue, home, executable, catalog, run=subprocess.run):
     for row in queue.db.execute("SELECT * FROM requests WHERE status IN ('dispatching','dispatched')").fetchall():
         collect(queue,home,row)
     allowed = {item['id']:item for item in catalog['threads'] if not item.get('read_only',False)}
+    waiting=[]
     for item in queue.pending()['messages']:
         if item['local_status'] != 'pending' or item['thread'] not in allowed:
             continue
@@ -42,6 +43,7 @@ def dispatch_one(queue, home, executable, catalog, run=subprocess.run):
             continue
         state = snapshot(home,item['thread'])
         if state['status'] != 'ready':
+            waiting.append({'id':item['id'],'reason':'desktop_writer_lock'})
             continue
         args = command(executable,state)
         request = queue.begin(item['id'],item['thread'],state['baseline'])
@@ -73,6 +75,8 @@ def dispatch_one(queue, home, executable, catalog, run=subprocess.run):
         "SELECT id FROM requests WHERE status IN ('dispatching','dispatched')")]
     if unresolved:
         return {'status':'needs_reconciliation','ids':unresolved}
+    if waiting:
+        return {'status':'waiting_for_tasks','requests':waiting}
     return {'status':'idle'}
 
 
