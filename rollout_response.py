@@ -52,3 +52,63 @@ def locate(root,thread):
     matches=list(Path(root).glob(f'*/*/*/rollout-*-{thread}.jsonl'))
     if len(matches)!=1:raise BridgeError('Session file missing or ambiguous')
     return matches[0]
+
+
+def recover_cli(path, thread, prompt, baseline):
+    """Match the exact persisted CLI input, never a quoted marker in tool output.
+
+    The caller durably stores prompt and baseline before starting exec resume.
+    A duplicate match requires reconciliation rather than an automatic resend.
+    """
+    if not UUID.fullmatch(thread) or (baseline and not UUID.fullmatch(baseline)):
+        raise BridgeError('Invalid task identity')
+    if not isinstance(prompt, str) or not prompt:
+        raise BridgeError('Missing exact CLI prompt')
+    path = Path(path)
+    if path.is_symlink() or not path.is_file():
+        raise BridgeError('Invalid session file')
+    matched = set()
+    finals = {}
+    completed = set()
+    identity = False
+    with path.open() as stream:
+        for line in stream:
+            try:
+                record = json.loads(line)
+            except ValueError:
+                continue
+            payload = record.get('payload', {})
+            if record.get('type') == 'session_meta':
+                if payload.get('id') != thread:
+                    raise BridgeError('Session belongs to another task')
+                identity = True
+            if record.get('type') != 'event_msg':
+                continue
+            turn = payload.get('turn_id')
+            if payload.get('type') == 'task_complete':
+                completed.add(turn)
+            if payload.get('type') != 'item_completed' or payload.get('thread_id') != thread:
+                continue
+            item = payload.get('item', {})
+            content = item.get('content', [])
+            if item.get('type') == 'UserMessage':
+                texts = [c.get('text') for c in content if c.get('type') == 'text']
+                if texts == [prompt]:
+                    matched.add(turn)
+            if item.get('type') == 'AgentMessage' and item.get('phase') == 'final_answer':
+                texts = [c['text'] for c in content if c.get('type') == 'Text' and isinstance(c.get('text'), str)]
+                if texts:
+                    finals.setdefault(turn, {})[item['id']] = '\n'.join(texts)
+    if not identity:
+        raise BridgeError('Missing session identity')
+    if len(matched) > 1:
+        raise BridgeError('Duplicate CLI input; manual reconciliation required')
+    if not matched:
+        return None
+    turn = next(iter(matched))
+    if not isinstance(turn, str) or not UUID.fullmatch(turn) or turn == baseline:
+        raise BridgeError('CLI input is not a new identified turn')
+    if turn not in completed or not finals.get(turn):
+        return None
+    return {'thread': thread, 'turn_id': turn, 'status': 'completed',
+            'events': [{'type': 'agent_message', 'text': text} for text in finals[turn].values()]}

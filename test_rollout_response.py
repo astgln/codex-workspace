@@ -3,7 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from bridge import BridgeError
-from rollout_response import recover
+from rollout_response import recover, recover_cli
 
 T='11111111-1111-1111-1111-111111111111'
 S='22222222-2222-2222-2222-222222222222'
@@ -44,3 +44,30 @@ class RolloutTests(unittest.TestCase):
         with self.assertRaises(BridgeError):self.run_records(rows)
         self.run_records(self.records());link=self.path.parent/'link';link.symlink_to(self.path)
         with self.assertRaises(BridgeError):recover(link,T,M,S,U)
+
+    def cli_rows(self):
+        rows=self.records()
+        rows[1]=self.item({'type':'UserMessage','id':'input','content':[{'type':'text','text':M}]})
+        return rows
+
+    def cli_result(self,rows,baseline=V):
+        self.path.write_text(''.join(json.dumps(r)+'\n' for r in rows))
+        return recover_cli(self.path,T,M,baseline)
+
+    def test_cli_exact_input_and_final_only(self):
+        rows=self.cli_rows()
+        rows.insert(2,self.item({'type':'Reasoning','content':[{'type':'Text','text':'PRIVATE'}]}))
+        self.assertEqual(self.cli_result(rows)['events'],[{'type':'agent_message','text':'Public answer'}])
+
+    def test_cli_rejects_duplicate_and_old_turn(self):
+        with self.assertRaises(BridgeError):self.cli_result(self.cli_rows(),U)
+        rows=self.cli_rows()
+        duplicate=self.cli_rows()[1];duplicate['payload']['turn_id']=V
+        with self.assertRaises(BridgeError):self.cli_result(rows+[duplicate])
+
+    def test_cli_requires_completed_exact_user_input(self):
+        self.assertIsNone(self.cli_result(self.cli_rows()[:-1]))
+        rows=self.cli_rows();rows[1]['payload']['item']['content'][0]['text']='quoted '+M
+        self.assertIsNone(self.cli_result(rows))
+        rows=self.cli_rows();rows[1]['payload']['item']['type']='FunctionCallOutput'
+        self.assertIsNone(self.cli_result(rows))
