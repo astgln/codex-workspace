@@ -5,8 +5,9 @@ only domains not migrated yet. Never run an older release against this schema.
 """
 import json
 from cloud import domain
+from . import catalog_store
 
-VERSION = 1
+VERSION = 2
 GRANTS = ('thread_grants', 'project_grants', 'thread_denies')
 SECTIONS = ('bindings', *GRANTS, 'member_policies')
 
@@ -24,6 +25,8 @@ def read_state(db):
         state[kind][uid].append(target)
     for uid, required in db.execute('SELECT uid,requires_approval FROM member_policies'):
         state['member_policies'][uid] = {'requires_approval': bool(required)}
+    if db.execute('PRAGMA user_version').fetchone()[0] >= 2:
+        catalog_store.read(db, state)
     return state
 
 
@@ -42,7 +45,11 @@ def write_state(db, state):
         if set(policy) != {'requires_approval'} or type(policy['requires_approval']) is not bool:
             raise ValueError('Invalid stored member policy')
         db.execute('INSERT INTO member_policies VALUES(?,?)', (uid, int(policy['requires_approval'])))
-    residual = {key: value for key, value in state.items() if key not in SECTIONS}
+    normalized = set(SECTIONS)
+    if db.execute('PRAGMA user_version').fetchone()[0] >= 2:
+        catalog_store.write(db, state)
+        normalized.update(catalog_store.ENTITIES)
+    residual = {key: value for key, value in state.items() if key not in normalized}
     db.execute('INSERT OR REPLACE INTO mailbox(id,value) VALUES(1,?)',
                (json.dumps(residual, ensure_ascii=False),))
 
@@ -70,6 +77,14 @@ def migrate(db):
             if read_state(db) != original:
                 raise RuntimeError('Migration state parity check failed')
             db.execute('PRAGMA user_version=1')
+            version = 1
+        if version == 1:
+            original = read_state(db)
+            catalog_store.create(db)
+            db.execute('PRAGMA user_version=2')
+            write_state(db, original)
+            if read_state(db) != original:
+                raise RuntimeError('Catalog migration parity check failed')
         db.commit()
     except Exception:
         db.rollback()
@@ -101,6 +116,7 @@ verify the output, then switch the old release to the restored directory.
             writer.execute('BEGIN IMMEDIATE')
             state = read_state(writer)
             writer.execute('UPDATE mailbox SET value=? WHERE id=1', (json.dumps(state, ensure_ascii=False),))
+            catalog_store.drop(writer)
             for table in ('access_grants', 'grant_subjects', 'member_bindings', 'member_policies', 'access_sections'):
                 writer.execute('DROP TABLE ' + table)
             writer.execute('PRAGMA user_version=0')

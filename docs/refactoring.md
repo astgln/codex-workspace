@@ -131,3 +131,14 @@ publication cycle before exiting. External force-kill/service-manager deadlines
 can still interrupt a process; durable intent remains necessary for recovery.
 Updates must still take the transport lock and reject an active dispatch before
 restarting the service. Desktop is not restarted. Validation: 171 Python tests.
+
+## Schema 2 catalog checkpoint
+
+Projects and tasks now use typed rows with stable ordering and an indexed project
+reference. Optional field presence and unknown extension fields are preserved for
+compatibility with older catalogs; authorization still validates actual catalog
+membership through the domain policy. Empty projects remain visible to owners.
+The migration supports schema 0 and 1, verifies state parity before commit, and
+removes catalog/project copies from the residual mailbox. The rollback copy
+reconstructs the legacy catalog alongside access state. Request and upload data
+remain in the residual mailbox pending subsequent domain migrations.

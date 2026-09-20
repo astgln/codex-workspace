@@ -44,7 +44,7 @@ class MigrationTests(unittest.TestCase):
             store = Store(self.temp.name)
             self.assertEqual(store.mutate(copy.deepcopy), self.state)
         with database(self.path) as db:
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 1)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], migrations.VERSION)
             residual = json.loads(db.execute('SELECT value FROM mailbox').fetchone()[0])
             self.assertFalse(set(migrations.SECTIONS) & residual.keys())
             self.assertEqual(db.execute('PRAGMA foreign_key_check').fetchall(), [])
@@ -105,3 +105,27 @@ class MigrationTests(unittest.TestCase):
             with database(path) as db:
                 self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 0)
                 self.assertEqual(json.loads(db.execute('SELECT value FROM mailbox').fetchone()[0]), self.state)
+
+    def test_catalog_optional_fields_order_and_extensions_survive(self):
+        self.state['projects'] = {'empty': {'id': 'empty', 'title': 'Empty'}}
+        self.state['catalog'] = {
+            'second': {'id':'second', 'project_id':'empty', 'title':'Second', 'status':'idle', 'read_only':False},
+            'first': {'project_id':'empty', 'future': {'nested':[1, 2]}}}
+        with database(self.path) as db:
+            db.execute('UPDATE mailbox SET value=?', (json.dumps(self.state),))
+        store = Store(self.temp.name)
+        self.assertEqual(store.mutate(copy.deepcopy), self.state)
+        self.assertEqual(list(store.mutate(copy.deepcopy)['catalog']), ['second','first'])
+        with database(self.path) as db:
+            residual = json.loads(db.execute('SELECT value FROM mailbox').fetchone()[0])
+            self.assertNotIn('catalog', residual)
+            self.assertNotIn('projects', residual)
+
+    def test_upgrade_from_schema_one(self):
+        store = Store(self.temp.name)
+        with database(self.path) as db:
+            state = migrations.read_state(db)
+            migrations.catalog_store.drop(db)
+            db.execute('PRAGMA user_version=1')
+            migrations.write_state(db, state)
+        self.assertEqual(Store(self.temp.name).mutate(copy.deepcopy), self.state)
