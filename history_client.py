@@ -39,7 +39,7 @@ def messages(read):
             for part,start in enumerate(range(0,len(text),6000)):
                 position=item.get('position') or f"{int(created*1000):016d}:{turn['id']}:{index:06d}"
                 result.append({'id':f'{ident}:{part}', 'position':f'{position}:{part:04d}',
-                               'created':int(created),'role':role,'text':text[start:start+6000]})
+                               'phase':item.get('phase') if part==0 else None,'created':int(created),'role':role,'text':text[start:start+6000]})
     return result
 
 

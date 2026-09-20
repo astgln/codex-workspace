@@ -9,6 +9,7 @@ def handle(store, uid, owner, action, body, collector=False):
     db=store.connect()
     try:
         db.execute('BEGIN IMMEDIATE')
+        db.execute('CREATE TABLE IF NOT EXISTS push_answers(id TEXT PRIMARY KEY,thread TEXT,created INTEGER)')
         db.execute('CREATE TABLE IF NOT EXISTS history_threads(thread TEXT PRIMARY KEY,cursor TEXT,synced INTEGER NOT NULL DEFAULT 0,requested INTEGER NOT NULL DEFAULT 0,more INTEGER NOT NULL DEFAULT 1)')
         db.execute('CREATE TABLE IF NOT EXISTS history_messages(thread TEXT NOT NULL,id TEXT NOT NULL,position TEXT NOT NULL,role TEXT NOT NULL,text TEXT NOT NULL,created INTEGER NOT NULL,PRIMARY KEY(thread,id))')
         db.execute('CREATE INDEX IF NOT EXISTS history_order ON history_messages(thread,position)')
@@ -43,6 +44,8 @@ def handle(store, uid, owner, action, body, collector=False):
                     if (not isinstance(ident,str) or not 1<=len(ident)<=160 or not isinstance(position,str) or not 1<=len(position)<=200
                             or role not in ('user','assistant') or not isinstance(text,str) or not 1<=len(text)<=32000
                             or type(created) is not int or created<0):raise domain.Rejected('Invalid public history message')
+                    if role=='assistant' and message.get('phase')=='final_answer' and now-300<=created<=now+60:
+                        db.execute('INSERT OR IGNORE INTO push_answers VALUES(?,?,?)',('history:'+thread+':'+ident,thread,created))
                     db.execute('INSERT INTO history_messages VALUES(?,?,?,?,?,?) ON CONFLICT(thread,id) DO UPDATE SET position=excluded.position,role=excluded.role,text=excluded.text,created=excluded.created',(thread,ident,position,role,text,created))
                 if body.get('finish'):
                     cursor=body.get('cursor')

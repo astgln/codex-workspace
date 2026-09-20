@@ -9,3 +9,5 @@
 
 .weekly-quota{display:flex;flex-direction:column;gap:6px;padding:14px 18px;border-top:1px solid var(--border)}
 .weekly-quota progress{width:100%;height:5px;accent-color:currentColor}
+
+.push-settings{padding:10px;display:flex;flex-direction:column;gap:6px;max-height:220px;overflow:auto;flex-shrink:0}.push-settings p{font-size:11px;line-height:1.5}

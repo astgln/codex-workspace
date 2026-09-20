@@ -11,7 +11,7 @@ from fastapi.responses import Response
 from starlette.concurrency import run_in_threadpool
 from cloud import login, runtime, workspace, domain
 from .store import Store
-from . import files, history, sessions
+from . import files, history, sessions, push
 
 store = None
 
@@ -29,6 +29,13 @@ async def refresh_login_keys():
         await asyncio.sleep(3600)
 
 
+async def deliver_push():
+    while True:
+        try:await run_in_threadpool(push.tick,store,os.environ['OWNER_USERNAME'])
+        except Exception:pass  # Never log subscription endpoints or keys.
+        await asyncio.sleep(10)
+
+
 @asynccontextmanager
 async def lifespan(app):
     global store
@@ -41,9 +48,14 @@ async def lifespan(app):
         if not os.environ.get(key):
             raise RuntimeError('Missing service configuration')
     store = Store(os.environ.get('WORKSPACE_DATA','/var/lib/codex-workspace'))
+    push.initialize(store)
     runtime.mutate = store.mutate
     task = asyncio.create_task(refresh_login_keys())
+    notifications = asyncio.create_task(deliver_push())
     yield
+    notifications.cancel()
+    try:await notifications
+    except asyncio.CancelledError:pass
     task.cancel()
     try:
         await task
@@ -93,6 +105,15 @@ async def handle(request: Request, path: str):
         return Response('{"error":"access_denied"}',status_code=403,media_type='application/json',headers={'Cache-Control':'no-store'})
     if path == 'health':
         result = runtime.response(200,{'status':'ok','mode':'standalone-web'})
+    elif path.startswith('web/push/'):
+        try:
+            if request.method!='POST':return Response(status_code=405)
+            data=json.loads(body)
+            if not isinstance(data,dict):raise ValueError()
+            value=await run_in_threadpool(push.handle,store,uid,os.environ['OWNER_USERNAME'],path.rsplit('/',1)[1],data)
+            result=runtime.response(200,value)
+        except workspace.Forbidden:result=runtime.response(403,{'error':'access_denied'})
+        except (ValueError,TypeError,domain.Rejected):result=runtime.response(400,{'error':'invalid_push'})
     elif path == 'v2/usage':
         from cloud.quota import valid
         if request.method != 'POST':return Response(status_code=405)

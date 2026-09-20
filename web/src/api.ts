@@ -103,3 +103,7 @@ export async function downloadFile(file:Attachment){
 export type HistoryMessage={id:string;position:string;role:'user'|'assistant';text:string;created:number};
 export type HistoryPage={messages:HistoryMessage[];before:string|null;synced_at:number|null;loading_older:boolean;pending:boolean};
 export const fetchHistory=(thread:string,before?:string)=>request<HistoryPage>('/web/history',{thread,...(before?{before}:{})});
+
+export const pushConfig=()=>request<{public_key:string}>('/web/push/config',{});
+export const pushSubscribe=(subscription:PushSubscriptionJSON)=>request('/web/push/subscribe',{subscription});
+export const pushUnsubscribe=(subscription:PushSubscriptionJSON)=>request('/web/push/unsubscribe',{subscription});

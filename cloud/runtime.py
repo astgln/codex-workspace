@@ -306,7 +306,7 @@ def website(event, context):
     return {'statusCode': 200, 'isBase64Encoded': True,
             'body': base64.b64encode(data).decode(), 'headers': {
                 'Content-Type': entry['type'],
-                'Cache-Control': 'no-store' if path == '/' else 'public, max-age=31536000, immutable',
+                'Cache-Control': 'no-store' if path in ('/', '/sw.js', '/manifest.webmanifest') else 'public, max-age=31536000, immutable',
                 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
                 'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
                 'Content-Security-Policy': "default-src 'self'; script-src 'self' https://oauth.telegram.org; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://oauth.telegram.org; frame-src https://oauth.telegram.org; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self' https://oauth.telegram.org"}}

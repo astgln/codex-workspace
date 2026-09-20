@@ -23,6 +23,7 @@ async function fixture(page: Page, role: 'owner'|'member' = 'owner') {
     if(path==='/web/login/config')output={client_id:'123',nonce:'test-nonce',challenge:'test-challenge'};
     else if(path==='/web/login/session'){loggedIn=true;output={ok:true};}
     else if(path==='/web/state')output=state;
+    else if(path==='/web/push/config')output={public_key:'test-key'};
     else if(path==='/web/history')output={messages:[],before:null,synced_at:1,loading_older:false,pending:false};
     else if(path==='/web/messages'){
       sent.push(body); const item={...body,id:-sent.length,sender:state.user.id,status:role==='owner'?'approved':'awaiting_approval',snapshot:'immutable-snapshot',created:Date.now()/1000,expires:Date.now()/1000+86400};state.messages.push(item);output=item;
@@ -262,3 +263,22 @@ test('conversation opens at end, restores reading position and anchors older his
   await fixture(page,'member');
   await expect(page.getByText('Неделя: 37% осталось')).toBeVisible();
  });
+
+test('PWA manifest, worker and iPhone installation instructions',async({page})=>{
+ await page.addInitScript(()=>{Object.defineProperty(navigator,'userAgent',{get:()=> 'iPhone'});});
+ await fixture(page);
+ await page.getByText('Приложение и уведомления',{exact:true}).click();
+ await expect(page.getByText(/На iPhone: Safari/)).toBeVisible();
+ await expect(page.getByText(/iOS 16.4/)).toBeVisible();
+ await expect(page.getByRole('button',{name:'Включить уведомления',exact:true})).toHaveCount(0);
+ const manifest=await (await page.request.get('/manifest.webmanifest')).json();
+ expect(manifest.display).toBe('standalone');expect(manifest.start_url).toBe('/');
+ expect((await page.request.get('/sw.js')).ok()).toBeTruthy();
+});
+test('notification link opens permitted task',async({page})=>{
+ await fixture(page);
+ await page.evaluate(()=>{location.hash='thread=thread-hd';});
+ await expect(page.locator('.header-title strong')).toHaveText('HD');
+ await page.evaluate(()=>{location.hash='approvals';});
+ await expect(page.locator('.header-title strong')).toHaveText('Одобрения');
+});

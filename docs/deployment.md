@@ -150,3 +150,32 @@ python3 web_client.py pending
 участвовать в тарификации согласно правилам Yandex Cloud.
 
 При split tunneling проверяйте исходящий IP именно SSH (например, первое поле `$SSH_CONNECTION` на доступном сервере). HTTPS-сервисы определения IP могут показывать другой маршрут. `--ssh-source` принимает один IPv4 и разрешает только `/32`.
+
+## Installed app and Web Push
+
+The site includes a Web App Manifest, home-screen icons and a root service
+worker. It deliberately does not cache conversations, attachments or API data.
+On iOS/iPadOS 16.4+, open in Safari, choose Share → Add to Home Screen, launch
+that installed app, sign in and enable notifications under “Приложение и
+уведомления”. Permission is requested only from that button's click. The same
+panel can disable the current device; signing out removes its subscription.
+
+The VM generates its VAPID private key once in the protected service data
+directory (`vapid.pem`, mode 0600); releases preserve it. Do not rotate it during
+normal deployment: subscriptions depend on its public key. No Apple Developer
+membership or Telegram messages are required for Web Push.
+
+A server loop checks every 10 seconds for approval requests (owner only) and
+completed answers (participants with current task access). Active-task public
+final answers arrive via the local history collector; request results can also
+arrive via the existing result API. Old history is not replayed as notifications.
+Push endpoints and encryption keys stay in the private SQLite database. Only
+Apple, Google and Mozilla push service endpoints are accepted; redirects are
+not followed. Notifications contain generic text, not conversation contents.
+Opening one still requires a valid website session and current task access.
+
+Delivery has persistent attempt records, bounded retries and removal of expired
+subscriptions. A crash after provider acceptance but before recording success
+can cause a repeat; notification tags replace existing notifications for the
+same task/type. Provider acceptance is not proof of delivery to a phone. Test
+actual installed iOS delivery separately, including when the app is closed.

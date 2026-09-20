@@ -41,6 +41,14 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(result.status_code,200)
         self.assertEqual(result.json(),{'allowed':False})
 
+    def test_push_config_requires_session_and_csrf(self):
+        self.assertEqual(self.client.post('/web/push/config',json={}).status_code,401)
+        token,csrf=self.browser_session()
+        self.assertEqual(self.client.post('/web/push/config',json={}).status_code,403)
+        result=self.client.post('/web/push/config',json={},headers={'X-CSRF-Token':csrf})
+        self.assertEqual(result.status_code,200)
+        self.assertEqual(set(result.json()),{'public_key'})
+
     def test_catalog_is_project_scoped(self):
         headers={'Authorization':'Bearer collector-test-key'}
         body={'project_id':'project-warcraft','threads':[{'id':'thread-launcher','title':'Launcher','project_id':'project-warcraft'}]}
