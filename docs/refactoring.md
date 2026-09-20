@@ -81,3 +81,14 @@ Legacy YDB, Bot API and Cloud Functions handlers remain isolated for historical
 compatibility until their removal, and are not loaded by the active VM server.
 The legacy `/v1` collector endpoints are absent from the VM adapter. Import tests
 explicitly block the legacy runtime to verify that the server does not need it.
+
+## Frontend domain checkpoint
+
+The browser API is split into transport/session, Telegram login, workspace,
+attachments, history, push and shared data types under `web/src/api/`. Existing
+imports use a compatibility export file. CSRF state remains private to transport;
+all domains use the same request policy and session invalidation behavior.
+`workspace/AccessPanel`, `ProjectPanel` and `PublicEvent` now own their rendering.
+The application shell still owns navigation and conversation/composer state;
+extracting those stateful responsibilities remains a later step. Read-only task
+copy no longer assumes a special controller task exists.

@@ -211,11 +211,11 @@ test('shared history loads older messages and resets when changing thread',async
 });
 
 
-test('controller history remains readable without offering self-dispatch',async({page})=>{
+test('read-only task history remains readable without offering submission',async({page})=>{
  const f=await fixture(page);
  Object.assign(f.state.threads[0],{read_only:true});
  await page.getByRole('button',{name:'Обновить',exact:true}).click();
- await expect(page.getByText('История управляющей задачи доступна для чтения.',{exact:false})).toBeVisible();
+ await expect(page.getByText('Эта задача доступна только для чтения.',{exact:false})).toBeVisible();
  await expect(page.getByRole('button',{name:'Отправить',exact:true})).toHaveCount(0);
  await page.getByRole('button',{name:'HD',exact:true}).click();
  await expect(page.getByRole('button',{name:'Отправить',exact:true})).toBeVisible();
