@@ -138,5 +138,29 @@ class WorkspaceTests(unittest.TestCase):
             with self.assertRaises(d.Rejected):
                 m.public_event({'type': 'file_change', 'change': 'edit', 'path': path}, 0)
 
+    def test_member_policy_owner_only_strict_boolean(self):
+        body={'user_id':20,'requires_approval':False}
+        with self.assertRaises(m.Forbidden):m.set_member_policy(self.s,20,'owner',body)
+        for invalid in (0,1,'false',None):
+            with self.assertRaises(d.Rejected):m.set_member_policy(self.s,10,'owner',{**body,'requires_approval':invalid})
+        m.set_member_policy(self.s,10,'owner',body)
+        self.assertFalse(m.view(self.s,20,'owner',1000)['user']['requires_approval'])
+        self.assertFalse(m.view(self.s,10,'owner',1000)['members'][0]['requires_approval'])
+
+    def test_policy_applies_to_new_requests_and_preserves_permissions(self):
+        pending=self.submit()
+        m.set_member_policy(self.s,10,'owner',{'user_id':20,'requires_approval':False})
+        self.assertEqual(self.s['items'][str(pending['id'])]['status'],'awaiting_approval')
+        self.body['request_id']='another-request-123'
+        direct=self.submit();self.assertEqual(direct['status'],'approved')
+        self.assertEqual(self.s['items'][str(direct['id'])]['approved_by'],10)
+        with self.assertRaises(m.Forbidden):m.submit(self.s,20,'owner',{**self.body,'thread':'thread-private1'},1002)
+        m.set_member_policy(self.s,10,'owner',{'user_id':20,'requires_approval':True})
+        self.assertEqual(self.submit()['id'],direct['id'])
+        self.body['request_id']='third-request-1234'
+        self.assertEqual(self.submit()['status'],'awaiting_approval')
+        m.set_grants(self.s,10,'owner',{'user_id':20,'threads':[]})
+        self.assertIsNone(m.collect(self.s,1003,'owner'))
+
 
 if __name__ == '__main__': unittest.main()

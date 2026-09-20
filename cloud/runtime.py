@@ -276,6 +276,7 @@ def web_api(event, context):
             '/web/state': lambda s: workspace.view(s, uid, owner, now),
             '/web/messages': lambda s: workspace.submit(s, uid, owner, body, now),
             '/web/decisions': lambda s: workspace.decision(s, uid, owner, body, now),
+            '/web/member-policy': lambda s: workspace.set_member_policy(s, uid, owner, body),
             '/web/grants': lambda s: workspace.set_grants(s, uid, owner, body),
         }
         if path not in routes:

@@ -29,11 +29,12 @@ async def refresh_login_keys():
         await asyncio.sleep(3600)
 
 
-async def deliver_push():
-    while True:
+async def deliver_push(stop):
+    while not stop.is_set():
         try:await run_in_threadpool(push.tick,store,os.environ['OWNER_USERNAME'])
         except Exception:pass  # Never log subscription endpoints or keys.
-        await asyncio.sleep(10)
+        try:await asyncio.wait_for(stop.wait(),10)
+        except asyncio.TimeoutError:pass
 
 
 @asynccontextmanager
@@ -51,11 +52,11 @@ async def lifespan(app):
     push.initialize(store)
     runtime.mutate = store.mutate
     task = asyncio.create_task(refresh_login_keys())
-    notifications = asyncio.create_task(deliver_push())
+    push_stop = asyncio.Event()
+    notifications = asyncio.create_task(deliver_push(push_stop))
     yield
-    notifications.cancel()
-    try:await notifications
-    except asyncio.CancelledError:pass
+    push_stop.set()
+    await notifications
     task.cancel()
     try:
         await task

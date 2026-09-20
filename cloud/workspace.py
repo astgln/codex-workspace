@@ -112,6 +112,21 @@ def set_grants(state, uid, owner, body):
     return {'ok': True}
 
 
+def requires_approval(state, uid, owner):
+    return not is_owner(state, uid, owner) and state.get('member_policies', {}).get(str(uid), {}).get('requires_approval', True) is not False
+
+
+def set_member_policy(state, uid, owner, body):
+    if not is_owner(state, uid, owner):
+        raise Forbidden()
+    target, required = body.get('user_id'), body.get('requires_approval')
+    if type(target) is not int or target not in state['bindings'].values() or target == uid or type(required) is not bool:
+        raise domain.Rejected('Invalid member policy')
+    state.setdefault('member_policies', {})[str(target)] = {'requires_approval': required}
+    # Policy applies to new requests; existing decisions and pending requests remain explicit.
+    return {'ok': True}
+
+
 def public_item(item):
     keys = ('id', 'sender', 'thread', 'text', 'created', 'expires', 'status', 'snapshot', 'events', 'result_status', 'attachments')
     return {k: item[k] for k in keys if k in item}
@@ -121,13 +136,13 @@ def view(state, uid, owner, now):
     domain.cleanup(state, now)
     admin = is_owner(state, uid, owner)
     catalog = permitted_threads(state, uid, owner)
-    result = {'user': {'id': uid, 'role': 'owner' if admin else 'member'},
+    result = {'user': {'id': uid, 'role': 'owner' if admin else 'member', 'requires_approval': requires_approval(state, uid, owner)},
               'threads': list(catalog.values()), 'catalog_updated': state.get('catalog_updated'),
               'collector_seen': state.get('collector_seen'), 'messages': [public_item(item) for item in state['items'].values()
                 if item.get('channel') == 'web' and (admin or item['thread'] in catalog)]}
     result['weekly_quota'] = state.get('weekly_quota')
     if admin:
-        result['members'] = [{'id': ident, 'username': name, 'threads': state.get('thread_grants', {}).get(str(ident), [])}
+        result['members'] = [{'id': ident, 'username': name, 'requires_approval': requires_approval(state, ident, owner), 'threads': state.get('thread_grants', {}).get(str(ident), [])}
                              for name, ident in state['bindings'].items() if name != owner]
     return result
 
@@ -167,8 +182,8 @@ def submit(state, uid, owner, body, now):
     item = dict(id=ident, source=source, channel='web', sender=uid, message=0,
         thread=thread, text=text, snapshot=fingerprint, created=now, expires=now + domain.APPROVAL_TTL,
         status='awaiting_approval', nonce=secrets.token_urlsafe(18), card='disabled', reply='none', events=[], attachments=attachments)
-    if is_owner(state, uid, owner):
-        item.update(status='approved', approved_by=uid, decision_at=now)
+    if not requires_approval(state, uid, owner):
+        item.update(status='approved', approved_by=state['bindings'][owner], decision_at=now, approval_source='member_policy' if uid != state['bindings'][owner] else 'owner')
     state['items'][str(ident)] = item
     for attachment in attachments:
         state['uploads'][attachment['id']]['used_by']=ident

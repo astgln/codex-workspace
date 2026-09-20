@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 
 async function fixture(page: Page, role: 'owner'|'member' = 'owner') {
   const threads = [{id:'thread-launcher',title:'Launcher',status:'idle'}, {id:'thread-hd',title:'HD',status:'idle'}];
-  const state = {weekly_quota:{used_percent:63,observed_at:Math.floor(Date.now()/1000),resets_at:Math.floor(Date.now()/1000)+86400},user:{id:role==='owner'?10:20,role},threads,messages:[] as any[],members:[{id:20,username:'friend',threads:[]}],catalog_updated:1,collector_seen:Date.now()/1000};
+  const state = {weekly_quota:{used_percent:63,observed_at:Math.floor(Date.now()/1000),resets_at:Math.floor(Date.now()/1000)+86400},user:{id:role==='owner'?10:20,role},threads,messages:[] as any[],members:[{id:20,username:'friend',requires_approval:true,threads:[]}],catalog_updated:1,collector_seen:Date.now()/1000};
   const sent:any[] = [], decisions:any[] = [];
   let loggedIn=false;
   await page.route('**/auth/**',route=>{
@@ -29,7 +29,8 @@ async function fixture(page: Page, role: 'owner'|'member' = 'owner') {
       sent.push(body); const item={...body,id:-sent.length,sender:state.user.id,status:role==='owner'?'approved':'awaiting_approval',snapshot:'immutable-snapshot',created:Date.now()/1000,expires:Date.now()/1000+86400};state.messages.push(item);output=item;
     } else if(path==='/web/decisions'){
       decisions.push(body); const item=state.messages.find(m=>m.id===body.id);item.status=body.decision;output=item;
-    } else if(path==='/web/grants')state.members[0].threads=body.threads;
+    } else if(path==='/web/member-policy')state.members[0].requires_approval=body.requires_approval;
+    else if(path==='/web/grants')state.members[0].threads=body.threads;
     else return route.fulfill({status:404,body:'{}'});
     await route.fulfill({json:output});
   });
@@ -281,4 +282,15 @@ test('notification link opens permitted task',async({page})=>{
  await expect(page.locator('.header-title strong')).toHaveText('HD');
  await page.evaluate(()=>{location.hash='approvals';});
  await expect(page.locator('.header-title strong')).toHaveText('Одобрения');
+});
+
+test('owner controls approval independently of task access',async({page})=>{
+ const f=await fixture(page);
+ await page.getByRole('button',{name:'Доступ к тредам',exact:true}).click();
+ const toggle=page.getByRole('checkbox',{name:'Требовать одобрение запросов',exact:true});
+ await expect(toggle).toBeChecked();await toggle.click();await expect(toggle).not.toBeChecked();
+ expect(f.state.members[0].requires_approval).toBe(false);
+ expect(f.state.members[0].threads).toEqual([]);
+ await expect(page.getByText('Новые запросы сразу попадают в очередь Codex.')).toBeVisible();
+ await toggle.click();await expect(toggle).toBeChecked();
 });

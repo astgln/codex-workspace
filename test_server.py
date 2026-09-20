@@ -72,7 +72,7 @@ class ServerTests(unittest.TestCase):
         self.assertNotIn('token',result.json())
         csrf=self.client.get('/auth/session').json()['csrf']
         view=self.client.post('/web/state',json={},headers={'X-CSRF-Token':csrf})
-        self.assertEqual(view.json()['user'],{'id':42,'role':'owner'})
+        self.assertEqual(view.json()['user'],{'id':42,'role':'owner','requires_approval':False})
         fresh=self.client.get('/web/login/config').json()['challenge']
         self.assertEqual(self.client.post('/web/login/session',json={**body,'challenge':fresh}).status_code,401)
         self.assertEqual(self.client.post('/web/login/session',json={**body,'id_token':'ambiguous'}).status_code,401)
