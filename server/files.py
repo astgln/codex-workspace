@@ -22,7 +22,7 @@ def public(upload):
 
 def start(state, uid, owner, body, now):
     thread = body.get('thread')
-    if thread not in workspace.permitted_threads(state,uid,owner):
+    if thread not in workspace.permitted_threads(state,uid,owner) or state['catalog'][thread].get('read_only'):
         raise workspace.Forbidden()
     name,size,digest,request_id = (body.get(k) for k in ('name','size','sha256','request_id'))
     if (not isinstance(name,str) or not 1 <= len(name) <= 200 or any(ord(c)<32 or c in '/\\' for c in name)
@@ -50,7 +50,7 @@ def access(state, uid, owner, ident, now, write=False, collector=False):
         raise domain.Rejected('Upload expired')
     if collector:
         item=state['items'].get(str(upload.get('used_by')))
-        if not item or item['status']!='delivered' or item.get('channel')!='web':
+        if not item or not workspace.dispatch_allowed(state,item,now,owner)['allowed']:
             raise workspace.Forbidden()
     else:
         if upload['thread'] not in workspace.permitted_threads(state,uid,owner):

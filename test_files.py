@@ -46,6 +46,12 @@ class FileTests(unittest.TestCase):
         self.store.mutate(lambda s:domain.receipt(s,claim,self.now))
         result=files.handle(self.store,None,'owner','get',{'id':upload['id'],'index':0},True)
         self.assertEqual(base64.b64decode(result['data']),self.data)
+        self.store.mutate(lambda s:workspace.set_grants(s,10,'owner',{'user_id':20,'threads':[]}))
+        with self.assertRaises(workspace.Forbidden):files.handle(self.store,None,'owner','get',{'id':upload['id'],'index':0},True)
+
+    def test_read_only_thread_rejects_upload_creation(self):
+        self.store.mutate(lambda s:s['catalog']['thread-launcher'].update(read_only=True))
+        with self.assertRaises(workspace.Forbidden):files.handle(self.store,20,'owner','start',self.body)
 
     def test_incomplete_and_wrong_digest_fail(self):
         upload=files.handle(self.store,20,'owner','start',{**self.body,'sha256':'0'*64})

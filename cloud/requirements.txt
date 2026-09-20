@@ -1,2 +1,2 @@
 ydb==3.29.6
-PyJWT[crypto]==2.10.1
+PyJWT[crypto]==2.14.0

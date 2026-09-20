@@ -203,6 +203,22 @@ def collect(state, now, owner):
     return None
 
 
+
+def dispatch_allowed(state, body, now, owner):
+    """Recheck a downloaded request before the laptop starts its Codex turn."""
+    item = state['items'].get(str(body.get('id')))
+    if (not item or item.get('channel') != 'web' or item['status'] != 'delivered'
+            or item['expires'] <= now or item['thread'] != body.get('thread')
+            or item['snapshot'] != body.get('snapshot')):
+        return {'allowed': False}
+    try:
+        permitted = permitted_threads(state, item['sender'], owner)
+    except Forbidden:
+        return {'allowed': False}
+    target = permitted.get(item['thread'])
+    return {'allowed': bool(target and not target.get('read_only'))}
+
+
 def publish(state, body, now):
     """Local trusted collector publishes only the response to this bridge request."""
     item = state['items'].get(str(body.get('id')))

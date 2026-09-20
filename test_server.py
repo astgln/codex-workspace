@@ -34,6 +34,12 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.client.post('/v2/inbox/claim',json={}).status_code,401)
         self.assertEqual(self.client.post('/web/state',json={},headers={'Authorization':'Bearer collector-test-key'}).status_code,401)
         self.assertEqual(self.client.get('/web/login/config').status_code,200)
+        self.assertEqual(self.client.post('/v2/inbox/validate',json={}).status_code,401)
+        self.browser_session()
+        self.assertEqual(self.client.post('/v2/inbox/validate',json={}).status_code,401)
+        result=self.client.post('/v2/inbox/validate',json={'id':-999},headers={'Authorization':'Bearer collector-test-key'})
+        self.assertEqual(result.status_code,200)
+        self.assertEqual(result.json(),{'allowed':False})
 
     def test_catalog_is_project_scoped(self):
         headers={'Authorization':'Bearer collector-test-key'}

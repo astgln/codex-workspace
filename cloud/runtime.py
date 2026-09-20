@@ -110,6 +110,8 @@ def api(event, context):
             return response(200, mutate(lambda s: workspace.sync_catalog(s, body, os.environ['PROJECT_ID'], now)))
         if path == '/v2/inbox/claim':
             return response(200, {'message': mutate(lambda s: workspace.collect(s, now, os.environ['OWNER_USERNAME']))})
+        if path == '/v2/inbox/validate':
+            return response(200, mutate(lambda s: workspace.dispatch_allowed(s, body, now, os.environ['OWNER_USERNAME'])))
         if path == '/v2/inbox/ack':
             mutate(lambda s: domain.receipt(s, body, now))
             return response(200, {'status': 'delivered'})

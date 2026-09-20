@@ -39,7 +39,7 @@ def request_text(request):
     return prompt
 
 
-async def dispatch_shared(queue, home, socket, catalog, client_factory=None):
+async def dispatch_shared(queue, home, socket, catalog, client_factory=None, *, api):
     from shared_rpc import SharedRPC
     client_factory=client_factory or SharedRPC
     for row in queue.db.execute("SELECT * FROM requests WHERE status IN ('dispatching','dispatched')").fetchall():
@@ -65,7 +65,7 @@ async def dispatch_shared(queue, home, socket, catalog, client_factory=None):
                 after=snapshot(home,item['thread'],require_unowned=False)
                 if before['settings']!=after['settings']:
                     raise BridgeError('Shared resume changed task settings; dispatch stopped')
-                request=queue.begin(item['id'],item['thread'],after['baseline'])
+                request=queue.begin(item['id'],item['thread'],after['baseline'],api=api)
                 prompt=request_text(request)
                 with queue.db:
                     row=queue.db.execute('SELECT dispatch FROM requests WHERE id=?',(item['id'],)).fetchone()
@@ -93,7 +93,7 @@ async def dispatch_shared(queue, home, socket, catalog, client_factory=None):
     return {'status':'waiting_for_tasks','requests':waiting} if waiting else {'status':'idle'}
 
 
-def dispatch_one(queue, home, executable, catalog, run=subprocess.run):
+def dispatch_one(queue, home, executable, catalog, run=subprocess.run, *, api):
     # Recover first. An interrupted dispatch is never submitted a second time.
     for row in queue.db.execute("SELECT * FROM requests WHERE status IN ('dispatching','dispatched')").fetchall():
         collect(queue,home,row)
@@ -110,7 +110,7 @@ def dispatch_one(queue, home, executable, catalog, run=subprocess.run):
             waiting.append({'id':item['id'],'reason':'desktop_writer_lock'})
             continue
         args = command(executable,state)
-        request = queue.begin(item['id'],item['thread'],state['baseline'])
+        request = queue.begin(item['id'],item['thread'],state['baseline'],api=api)
         prompt = request_text(request)
         with queue.db:
             row=queue.db.execute('SELECT dispatch FROM requests WHERE id=?',(item['id'],)).fetchone()
@@ -170,9 +170,9 @@ def main():
                     api=API(config)
                     queue.tick(api)
                     if args.transport=='shared':
-                        result=asyncio.run(dispatch_shared(queue,home,home/'app-server-control/app-server-control.sock',catalog))
+                        result=asyncio.run(dispatch_shared(queue,home,home/'app-server-control/app-server-control.sock',catalog,api=api))
                     else:
-                        result=dispatch_one(queue,home,args.codex,catalog)
+                        result=dispatch_one(queue,home,args.codex,catalog,api=api)
                     queue.tick(api)
                 finally:
                     queue.db.close()

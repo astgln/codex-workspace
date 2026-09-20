@@ -45,6 +45,12 @@ class LoginTests(unittest.TestCase):
         for token in bad:
             with self.assertRaises(workspace.Unauthorized): self.verify(token)
 
+    def test_unknown_critical_jwt_extension_is_rejected(self):
+        claims=jwt.decode(self.token(), options={'verify_signature':False})
+        token=jwt.encode(claims,self.key,algorithm='RS256',headers={
+            'kid':'test-key','crit':['unsupported-policy'],'unsupported-policy':True})
+        with self.assertRaises(workspace.Unauthorized):self.verify(token)
+
     def test_challenge_expiry_tampering_and_one_use(self):
         challenge = login.new_challenge('test-secret', 1000)
         self.assertEqual(login.verify_challenge(challenge['challenge'], 'test-secret', 1001), challenge['nonce'])

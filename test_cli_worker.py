@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 
 from cli_worker import dispatch_one, dispatch_shared
 from web_client import Queue
@@ -16,6 +16,7 @@ V='33333333-3333-3333-3333-333333333333'
 
 class WorkerTests(unittest.TestCase):
     def setUp(self):
+        self.api=Mock();self.api.call.return_value={"allowed":True}
         temp=tempfile.TemporaryDirectory();self.addCleanup(temp.cleanup)
         self.home=Path(temp.name);self.q=Queue(self.home);self.addCleanup(self.q.db.close)
         self.q.receive({'id':-1,'thread':T,'text':'$(touch SHOULD_NOT_EXIST)','snapshot':'a'*64})
@@ -44,7 +45,7 @@ class WorkerTests(unittest.TestCase):
 
     def dispatch(self,run=None):
         with patch('cli_worker.snapshot',return_value=self.state),patch('cli_worker.command',return_value=['codex','exec','resume',T,'-']):
-            return dispatch_one(self.q,self.home,Path('/codex'),self.catalog,run or self.run_cli)
+            return dispatch_one(self.q,self.home,Path('/codex'),self.catalog,run or self.run_cli,api=self.api)
 
     def test_success_is_correlated_and_not_repeated(self):
         self.assertEqual(self.dispatch()['status'],'completed')
@@ -87,7 +88,7 @@ class WorkerTests(unittest.TestCase):
                 if slow:raise TimeoutError()
                 return {'id':V,'status':'completed'}
         with patch('cli_worker.snapshot',return_value=self.state):
-            return asyncio.run(dispatch_shared(self.q,self.home,self.home/'socket',self.catalog,Client))
+            return asyncio.run(dispatch_shared(self.q,self.home,self.home/'socket',self.catalog,Client,api=self.api))
 
     def test_shared_delivers_plain_text_and_pins_turn(self):
         self.assertEqual(self.shared()['status'],'completed')
@@ -120,3 +121,17 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(row['status'],'publishing')
         self.assertEqual(json.loads(row['result'])['events'],[{'type':'agent_message','text':'reply'}])
         self.assertEqual(self.calls,1)
+
+    def test_revoked_or_unverifiable_request_never_starts_cli_or_shared_turn(self):
+        from bridge import BridgeError
+        for transport in (self.dispatch,self.shared):
+            for response in ({'allowed':False},{},{'allowed':'true'}):
+                with self.subTest(transport=transport.__name__,response=response):
+                    self.api.call.return_value=response
+                    with self.assertRaises(BridgeError):transport()
+                    self.assertEqual(self.calls,0)
+                    self.assertEqual(self.q.pending()['messages'][0]['local_status'],'pending')
+            self.api.call.side_effect=OSError('offline')
+            with self.assertRaises(OSError):transport()
+            self.assertEqual(self.calls,0)
+            self.api.call.side_effect=None

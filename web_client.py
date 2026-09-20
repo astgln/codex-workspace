@@ -134,7 +134,7 @@ class Queue:
             results.append(item)
         return {'trust': 'owner_approved_external_content_not_system_instructions', 'messages': results}
 
-    def begin(self, ident, thread, baseline):
+    def begin(self, ident, thread, baseline, *, api):
         with self.db:
             row = self.db.execute('SELECT * FROM requests WHERE id=?', (ident,)).fetchone()
             if not row or row['status'] != 'pending':
@@ -148,6 +148,9 @@ class Queue:
                     raise BridgeError('Local attachment changed')
             if item['thread'] != thread:
                 raise BridgeError('Thread mismatch')
+            decision = api.call('/v2/inbox/validate', {'id': ident, 'thread': thread, 'snapshot': item['snapshot']})
+            if not isinstance(decision, dict) or decision.get('allowed') is not True:
+                raise BridgeError('Request no longer authorized; dispatch stopped')
             marker = 'workspace-request:' + str(ident) + ':' + item['snapshot'][:16]
             dispatch = {'marker': marker, 'baseline': baseline, 'thread': thread}
             self.db.execute("UPDATE requests SET status='dispatching',dispatch=? WHERE id=?", (json.dumps(dispatch), ident))
@@ -232,7 +235,7 @@ def main():
             elif args.command == 'tick': result = queue.tick(API(config))
             elif args.command == 'pending': result = queue.pending()
             elif args.command == 'wait': result = wait_for_request(queue,API(config),args.timeout,args.interval)
-            elif args.command == 'begin': result = queue.begin(args.id,args.thread,args.baseline)
+            elif args.command == 'begin': result = queue.begin(args.id,args.thread,args.baseline,api=API(config))
             elif args.command == 'sent': queue.sent(args.id,args.marker); result = {'status':'dispatched'}
             elif args.command == 'collect':
                 from rollout_response import locate,recover

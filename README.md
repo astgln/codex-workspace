@@ -70,6 +70,7 @@ cd web && npx playwright install chromium && npx playwright test
 нет тестового входа или режима обхода Telegram Login.
 
 [Развёртывание VM и эксплуатация](docs/deployment.md).
+[Границы доверия и проверки безопасности](docs/security.md).
 [Архив локального прототипа](docs/legacy-local-prototype.md),
 [архив Cloud Functions](docs/legacy-cloud-functions.md).
 Прежние Telegram polling/webhook и тестовая heartbeat-автоматизация остаются

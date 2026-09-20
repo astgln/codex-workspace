@@ -5,7 +5,9 @@ release=$1
 cd "$release"
 id codex-workspace >/dev/null 2>&1 || useradd --system --home-dir /var/lib/codex-workspace --shell /usr/sbin/nologin codex-workspace
 mkdir -p /opt/codex-workspace /var/lib/codex-workspace
+chmod 700 /var/lib/codex-workspace
 python3 -m venv /opt/codex-workspace/venv
+/opt/codex-workspace/venv/bin/python -m pip install --quiet --upgrade pip==26.2.1
 /opt/codex-workspace/venv/bin/pip install --quiet -r "$release/server/requirements.txt"
 python3 "$release/server/bootstrap.py" "$release/settings.json"
 if [ -f "$release/migration.json" ] && [ ! -f /var/lib/codex-workspace/workspace.sqlite3 ]; then
@@ -16,6 +18,9 @@ chmod 750 /etc/codex-workspace
 chmod 640 /etc/codex-workspace/config.json
 chown -R codex-workspace:codex-workspace /var/lib/codex-workspace
 chmod 700 /var/lib/codex-workspace
+for database_file in /var/lib/codex-workspace/workspace.sqlite3 /var/lib/codex-workspace/workspace.sqlite3-wal /var/lib/codex-workspace/workspace.sqlite3-shm; do
+    [ ! -f "$database_file" ] || chmod 600 "$database_file"
+done
 ln -sfn "$release" /opt/codex-workspace/current
 cp "$release/server/codex-workspace.service" /etc/systemd/system/codex-workspace.service
 systemctl daemon-reload

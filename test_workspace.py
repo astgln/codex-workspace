@@ -105,6 +105,21 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(first['id'], second['id'])
         with self.assertRaises(d.Rejected): m.submit(self.s, 20, 'owner', {**self.body, 'text': 'changed'}, 1002)
 
+    def test_downloaded_request_rechecks_grant_expiry_and_snapshot(self):
+        item=self.submit()
+        m.decision(self.s,10,'owner',{'id':item['id'],'snapshot':item['snapshot'],'decision':'approved'},1002)
+        claim=m.collect(self.s,1003,'owner');d.receipt(self.s,claim,1004)
+        body={k:item[k] for k in ('id','thread','snapshot')}
+        self.assertEqual(m.dispatch_allowed(self.s,body,1005,'owner'),{'allowed':True})
+        for change in ({'snapshot':'changed'},{'thread':'thread-private1'},{'id':-999}):
+            self.assertFalse(m.dispatch_allowed(self.s,{**body,**change},1005,'owner')['allowed'])
+        self.assertFalse(m.dispatch_allowed(self.s,body,1001+d.APPROVAL_TTL,'owner')['allowed'])
+        self.s['catalog'][item['thread']]['read_only']=True
+        self.assertFalse(m.dispatch_allowed(self.s,body,1005,'owner')['allowed'])
+        self.s['catalog'][item['thread']]['read_only']=False
+        m.set_grants(self.s,10,'owner',{'user_id':20,'threads':[]})
+        self.assertFalse(m.dispatch_allowed(self.s,body,1005,'owner')['allowed'])
+
     def test_other_project_catalog_rejected(self):
         with self.assertRaises(m.Forbidden): m.sync_catalog(self.s, {**self.catalog, 'project_id': 'work'}, self.project, 1000)
         body = {**self.catalog, 'threads': [{**self.catalog['threads'][0], 'project_id': 'work'}]}

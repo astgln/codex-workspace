@@ -4,6 +4,7 @@ import hashlib
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import Mock
 import time
 from cloud import domain, workspace
 from bridge import BridgeError
@@ -12,6 +13,7 @@ from web_client import Queue
 
 class CollectorTests(unittest.TestCase):
     def setUp(self):
+        self.api=Mock();self.api.call.return_value={"allowed":True}
         self.temp = tempfile.TemporaryDirectory()
         self.q = Queue(Path(self.temp.name))
         self.item = {'id':-1,'thread':'thread-one','text':'external text','snapshot':'a'*64,'lease':'lease','created':1000}
@@ -32,15 +34,15 @@ class CollectorTests(unittest.TestCase):
 
     def test_dispatch_intent_survives_restart_and_cannot_repeat(self):
         self.receipt()
-        dispatch=self.q.begin(-1,'thread-one','baseline-turn')
+        dispatch=self.q.begin(-1,'thread-one','baseline-turn',api=self.api)
         self.q.db.close();self.q=Queue(Path(self.temp.name))
-        with self.assertRaises(BridgeError): self.q.begin(-1,'thread-one','baseline-turn')
+        with self.assertRaises(BridgeError): self.q.begin(-1,'thread-one','baseline-turn',api=self.api)
         self.assertEqual(self.q.pending()['messages'][0]['local_status'],'dispatching')
         with self.assertRaises(BridgeError): self.q.sent(-1,'wrong-marker')
         self.q.sent(-1,dispatch['marker'])
 
     def test_result_requires_matching_marker_thread_and_turn(self):
-        self.receipt(); dispatch=self.q.begin(-1,'thread-one','baseline-turn');self.q.sent(-1,dispatch['marker'])
+        self.receipt(); dispatch=self.q.begin(-1,'thread-one','baseline-turn',api=self.api);self.q.sent(-1,dispatch['marker'])
         body={'marker':dispatch['marker'],'thread':'thread-one','turn_id':'new-turn','status':'completed','events':[{'type':'agent_message','text':'reply'}]}
         for change in ({'marker':'other'},{'thread':'other'},{'turn_id':''},{'turn_id':'baseline-turn'}):
             with self.assertRaises(BridgeError): self.q.publish(-1,{**body,**change})
@@ -55,7 +57,7 @@ class CollectorTests(unittest.TestCase):
         with self.assertRaises(BridgeError): self.q.receive({**self.item,'text':'changed but same digest'})
 
     def test_response_turn_is_pinned_across_revisions(self):
-        self.receipt();dispatch=self.q.begin(-1,'thread-one','baseline-turn');self.q.sent(-1,dispatch['marker'])
+        self.receipt();dispatch=self.q.begin(-1,'thread-one','baseline-turn',api=self.api);self.q.sent(-1,dispatch['marker'])
         body={'marker':dispatch['marker'],'thread':'thread-one','turn_id':'new-turn','status':'running','events':[]}
         self.q.publish(-1,body)
         with self.q.db:self.q.db.execute("UPDATE requests SET status='dispatched' WHERE id=-1")
@@ -67,15 +69,15 @@ class CollectorTests(unittest.TestCase):
         attachment={'id':'a'*32,'name':'Connection.log','size':len(data),'sha256':hashlib.sha256(data).hexdigest()}
         item={**self.item,'id':-2,'attachments':[attachment]}
         self.q.receive(item);self.receipt()
-        with self.assertRaises(BridgeError):self.q.begin(-2,'thread-one','baseline-turn')
+        with self.assertRaises(BridgeError):self.q.begin(-2,'thread-one','baseline-turn',api=self.api)
         class FakeAPI:
             def call(self,path,body):return {'data':base64.b64encode(data).decode(),'chunk_size':49152}
         self.q.downloads(FakeAPI())
         saved=next(m for m in self.q.pending()['messages'] if m['id']==-2)['files'][0]
         Path(saved['path']).write_bytes(b'changed')
-        with self.assertRaises(BridgeError):self.q.begin(-2,'thread-one','baseline-turn')
+        with self.assertRaises(BridgeError):self.q.begin(-2,'thread-one','baseline-turn',api=self.api)
         Path(saved['path']).write_bytes(data)
-        self.assertEqual(self.q.begin(-2,'thread-one','baseline-turn')['files'][0]['sha256'],attachment['sha256'])
+        self.assertEqual(self.q.begin(-2,'thread-one','baseline-turn',api=self.api)['files'][0]['sha256'],attachment['sha256'])
 
     def test_lost_receipt_response_recovers_after_restart_without_second_dispatch(self):
         state=domain.initial()
@@ -93,11 +95,11 @@ class CollectorTests(unittest.TestCase):
                 domain.receipt(state,body,1200)
                 return {'status':'delivered'}
         self.q.receipts(RecoveredAPI())
-        self.q.begin(-1,'thread-one','baseline-turn')
-        with self.assertRaises(BridgeError):self.q.begin(-1,'thread-one','baseline-turn')
+        self.q.begin(-1,'thread-one','baseline-turn',api=self.api)
+        with self.assertRaises(BridgeError):self.q.begin(-1,'thread-one','baseline-turn',api=self.api)
 
     def test_lost_publish_response_retries_same_revision_after_restart(self):
-        self.receipt();dispatch=self.q.begin(-1,'thread-one','baseline-turn');self.q.sent(-1,dispatch['marker'])
+        self.receipt();dispatch=self.q.begin(-1,'thread-one','baseline-turn',api=self.api);self.q.sent(-1,dispatch['marker'])
         self.q.publish(-1,{'marker':dispatch['marker'],'thread':'thread-one','turn_id':'new-turn',
                           'status':'completed','events':[{'type':'agent_message','text':'Actual reply'}]})
         with self.q.db:self.q.db.execute("INSERT OR REPLACE INTO metadata VALUES('login_keys',?)",(int(time.time()),))
