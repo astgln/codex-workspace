@@ -9,7 +9,8 @@ import time
 from fastapi import FastAPI, Request
 from fastapi.responses import Response
 from starlette.concurrency import run_in_threadpool
-from cloud import login, runtime, workspace, domain
+from cloud import login, workspace, domain
+from . import api
 from .store import Store
 from . import files, history, sessions, push
 
@@ -50,7 +51,6 @@ async def lifespan(app):
             raise RuntimeError('Missing service configuration')
     store = Store(os.environ.get('WORKSPACE_DATA','/var/lib/codex-workspace'))
     push.initialize(store)
-    runtime.mutate = store.mutate
     task = asyncio.create_task(refresh_login_keys())
     push_stop = asyncio.Event()
     notifications = asyncio.create_task(deliver_push(push_stop))
@@ -105,20 +105,20 @@ async def handle(request: Request, path: str):
     except workspace.Forbidden:
         return Response('{"error":"access_denied"}',status_code=403,media_type='application/json',headers={'Cache-Control':'no-store'})
     if path == 'health':
-        result = runtime.response(200,{'status':'ok','mode':'standalone-web'})
+        result = api.response(200,{'status':'ok','mode':'standalone-web'})
     elif path.startswith('web/push/'):
         try:
             if request.method!='POST':return Response(status_code=405)
             data=json.loads(body)
             if not isinstance(data,dict):raise ValueError()
             value=await run_in_threadpool(push.handle,store,uid,os.environ['OWNER_USERNAME'],path.rsplit('/',1)[1],data)
-            result=runtime.response(200,value)
-        except workspace.Forbidden:result=runtime.response(403,{'error':'access_denied'})
-        except (ValueError,TypeError,domain.Rejected):result=runtime.response(400,{'error':'invalid_push'})
+            result=api.response(200,value)
+        except workspace.Forbidden:result=api.response(403,{'error':'access_denied'})
+        except (ValueError,TypeError,domain.Rejected):result=api.response(400,{'error':'invalid_push'})
     elif path == 'v2/usage':
         from cloud.quota import valid
         if request.method != 'POST':return Response(status_code=405)
-        if not runtime.authorized(event):return Response(status_code=401)
+        if not api.authorized(event):return Response(status_code=401)
         try:
             data=json.loads(body)
             if not valid(data) or data['observed_at'] > time.time()+60:raise ValueError()
@@ -127,8 +127,8 @@ async def handle(request: Request, path: str):
                     state['weekly_quota']=data
                 return {'ok':True}
             value=await run_in_threadpool(store.mutate,save_usage)
-            result=runtime.response(200,value)
-        except (ValueError,TypeError):result=runtime.response(400,{'error':'invalid_request'})
+            result=api.response(200,value)
+        except (ValueError,TypeError):result=api.response(400,{'error':'invalid_request'})
     elif path in ('web/history','v2/history/pending','v2/history/publish'):
         try:
             if request.method!='POST':return Response(status_code=405)
@@ -136,19 +136,19 @@ async def handle(request: Request, path: str):
             if not isinstance(data,dict):raise ValueError()
             collector=path.startswith('v2/')
             if collector:
-                if not runtime.authorized(event):raise workspace.Unauthorized()
+                if not api.authorized(event):raise workspace.Unauthorized()
                 uid=None
             else:
                 authorization=event['headers'].get('authorization','')
                 if not authorization.startswith('Workspace '):raise workspace.Unauthorized()
                 uid=workspace.verify_session(authorization[10:],os.environ['TELEGRAM_BOT_TOKEN'],int(time.time()))
             value=await run_in_threadpool(history.handle,store,uid,os.environ['OWNER_USERNAME'],'read' if not collector else path.rsplit('/',1)[1],data,collector)
-            result=runtime.response(200,value)
-        except workspace.Unauthorized:result=runtime.response(401,{'error':'login_required'})
-        except workspace.Forbidden:result=runtime.response(403,{'error':'access_denied'})
-        except domain.Rejected:result=runtime.response(409,{'error':'history_conflict'})
-        except (ValueError,TypeError):result=runtime.response(400,{'error':'invalid_request'})
-        except Exception:result=runtime.response(503,{'error':'temporarily_unavailable'})
+            result=api.response(200,value)
+        except workspace.Unauthorized:result=api.response(401,{'error':'login_required'})
+        except workspace.Forbidden:result=api.response(403,{'error':'access_denied'})
+        except domain.Rejected:result=api.response(409,{'error':'history_conflict'})
+        except (ValueError,TypeError):result=api.response(400,{'error':'invalid_request'})
+        except Exception:result=api.response(503,{'error':'temporarily_unavailable'})
     elif path.startswith('web/uploads/') or path == 'v2/files/get':
         try:
             if request.method!='POST':
@@ -157,30 +157,30 @@ async def handle(request: Request, path: str):
             if not isinstance(data,dict):raise ValueError()
             collector=path=='v2/files/get'
             if collector:
-                if not runtime.authorized(event):raise workspace.Unauthorized()
+                if not api.authorized(event):raise workspace.Unauthorized()
                 uid=None
             else:
                 authorization=event['headers'].get('authorization','')
                 if not authorization.startswith('Workspace '):raise workspace.Unauthorized()
                 uid=workspace.verify_session(authorization[10:],os.environ['TELEGRAM_BOT_TOKEN'],int(time.time()))
             value=await run_in_threadpool(files.handle,store,uid,os.environ['OWNER_USERNAME'],path.rsplit('/',1)[1],data,collector)
-            result=runtime.response(200,value)
-        except workspace.Unauthorized:result=runtime.response(401,{'error':'login_required'})
-        except workspace.Forbidden:result=runtime.response(403,{'error':'access_denied'})
-        except domain.Rejected:result=runtime.response(409,{'error':'upload_conflict'})
-        except (ValueError,TypeError):result=runtime.response(400,{'error':'invalid_request'})
-        except Exception:result=runtime.response(503,{'error':'temporarily_unavailable'})
+            result=api.response(200,value)
+        except workspace.Unauthorized:result=api.response(401,{'error':'login_required'})
+        except workspace.Forbidden:result=api.response(403,{'error':'access_denied'})
+        except domain.Rejected:result=api.response(409,{'error':'upload_conflict'})
+        except (ValueError,TypeError):result=api.response(400,{'error':'invalid_request'})
+        except Exception:result=api.response(503,{'error':'temporarily_unavailable'})
     elif path.startswith('web/'):
-        result = await run_in_threadpool(runtime.web_api,event,None)
+        result = await run_in_threadpool(api.web_api,event,None,mutate=store.mutate)
         if path=='web/login/session' and result['statusCode']==200:
             signed=json.loads(result['body'])['token']
             uid=workspace.verify_session(signed,os.environ['TELEGRAM_BOT_TOKEN'],int(time.time()))
             cookie,_=await run_in_threadpool(sessions.issue,store,uid)
-            result=runtime.response(200,{'ok':True})
+            result=api.response(200,{'ok':True})
     elif path.startswith('v2/'):
-        result = await run_in_threadpool(runtime.api,event,None)
+        result = await run_in_threadpool(api.api,event,None,mutate=store.mutate)
     else:
-        result = await run_in_threadpool(runtime.website,event,None)
+        result = await run_in_threadpool(api.website,event,None)
     payload = base64.b64decode(result['body']) if result.get('isBase64Encoded') else result['body']
     headers = {**result.get('headers',{}),'X-Content-Type-Options':'nosniff'}
     response=Response(content=payload,status_code=result['statusCode'],headers=headers)

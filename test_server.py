@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 from fastapi.testclient import TestClient
-from cloud import runtime, workspace
+from cloud import workspace
 from server.app import app
 from server.store import Store
 from server import sessions
@@ -19,13 +19,11 @@ class ServerTests(unittest.TestCase):
             'TELEGRAM_BOT_TOKEN':'123:test-only','OWNER_USERNAME':'owner','ALLOWED_USERNAMES':'owner|friend',
             'CLIENT_KEY_HASH':hashlib.sha256(b'collector-test-key').hexdigest(),'PROJECT_ID':'project-warcraft','PUBLIC_ORIGIN':'https://workspace.test'})
         self.env.start()
-        self.original=runtime.mutate
         self.keys=patch('cloud.login.public_keys',side_effect=RuntimeError('offline test'));self.keys.start()
         self.client=TestClient(app,base_url='https://workspace.test',headers={'Origin':'https://workspace.test'});self.client.__enter__()
 
     def tearDown(self):
         self.client.__exit__(None,None,None)
-        runtime.mutate=self.original
         self.keys.stop();self.env.stop();self.temp.cleanup()
 
     def test_health_and_auth_separation(self):

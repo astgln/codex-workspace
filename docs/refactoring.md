@@ -70,3 +70,14 @@ SQLite file or replace it without handling its WAL/SHM sidecars.
 Tests cover migration parity, repeated startup, interrupted migration and retry,
 mutation rollback, newer-schema rejection and restoration of post-migration data.
 This checkpoint has not yet been deployed to production.
+
+## Server domain checkpoint
+
+`cloud/workspace.py` is now an import facade for `access`, `identity`, `catalog`,
+`requests`, `responses` and `views`. Domain functions retain their transaction
+boundary and public contracts. The VM uses `server/api.py` with explicit storage
+injection; `server/app.py` no longer imports or monkey-patches `cloud/runtime.py`.
+Legacy YDB, Bot API and Cloud Functions handlers remain isolated for historical
+compatibility until their removal, and are not loaded by the active VM server.
+The legacy `/v1` collector endpoints are absent from the VM adapter. Import tests
+explicitly block the legacy runtime to verify that the server does not need it.
