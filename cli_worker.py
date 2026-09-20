@@ -182,6 +182,10 @@ def main():
                     queue.tick(api)
                 finally:
                     queue.db.close()
+            status_path=args.state/'cli-worker-status.json'
+            temporary=status_path.with_suffix('.tmp')
+            temporary.write_text(json.dumps({'updated_at':int(time.time()),'pid':os.getpid(),**result}))
+            temporary.replace(status_path)
             if args.once or (result['status']!='idle' and result!=previous_result):
                 print(json.dumps(result),flush=True)
             previous_result=result
