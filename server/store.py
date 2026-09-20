@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import sqlite3
 from cloud import domain
+from server import migrations
 
 
 class Store:
@@ -14,26 +15,26 @@ class Store:
         db = self.connect()
         try:
             db.execute('PRAGMA journal_mode=WAL')
-            db.execute('CREATE TABLE IF NOT EXISTS mailbox(id INTEGER PRIMARY KEY,value TEXT NOT NULL)')
-            db.commit()
+            migrations.migrate(db)
         finally:
             db.close()
         os.chmod(self.path,0o600)
 
     def connect(self):
-        return sqlite3.connect(self.path, timeout=10)
+        db = sqlite3.connect(self.path, timeout=10)
+        db.execute('PRAGMA foreign_keys=ON')
+        return db
 
     def mutate(self, operation):
         db = self.connect()
         try:
             db.execute('BEGIN IMMEDIATE')
-            row = db.execute('SELECT value FROM mailbox WHERE id=1').fetchone()
-            state = json.loads(row[0]) if row else domain.initial()
+            state = migrations.read_state(db)
             output = operation(state)
             value = json.dumps(state,ensure_ascii=False)
             if len(value.encode()) > 3000000:
                 raise domain.Rejected('Mailbox capacity')
-            db.execute('INSERT OR REPLACE INTO mailbox(id,value) VALUES(1,?)',(value,))
+            migrations.write_state(db, state)
             db.commit()
             return output
         except Exception:

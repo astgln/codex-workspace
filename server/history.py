@@ -2,6 +2,7 @@
 import json
 import time
 from cloud import domain, workspace
+from server.migrations import read_state
 
 
 def handle(store, uid, owner, action, body, collector=False):
@@ -13,8 +14,7 @@ def handle(store, uid, owner, action, body, collector=False):
         db.execute('CREATE TABLE IF NOT EXISTS history_threads(thread TEXT PRIMARY KEY,cursor TEXT,synced INTEGER NOT NULL DEFAULT 0,requested INTEGER NOT NULL DEFAULT 0,more INTEGER NOT NULL DEFAULT 1)')
         db.execute('CREATE TABLE IF NOT EXISTS history_messages(thread TEXT NOT NULL,id TEXT NOT NULL,position TEXT NOT NULL,role TEXT NOT NULL,text TEXT NOT NULL,created INTEGER NOT NULL,PRIMARY KEY(thread,id))')
         db.execute('CREATE INDEX IF NOT EXISTS history_order ON history_messages(thread,position)')
-        row=db.execute('SELECT value FROM mailbox WHERE id=1').fetchone()
-        state=json.loads(row[0]) if row else domain.initial()
+        state=read_state(db)
         catalog=state.get('catalog',{})
         if action=='pending' and collector:
             rows=db.execute('SELECT thread,cursor,synced,more FROM history_threads WHERE requested>synced ORDER BY requested LIMIT 10').fetchall()

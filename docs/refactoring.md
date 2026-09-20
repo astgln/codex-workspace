@@ -41,3 +41,32 @@ Changes ship incrementally; passing unit tests alone does not prove live deliver
 These are outstanding acceptance items, not reasons to stop independent
 refactoring. No desktop restart or network/security configuration change is
 included in this plan.
+
+## Schema 1 checkpoint
+
+`server/migrations.py` migrates bindings, project/task grants, task denies and
+member approval policies into typed access tables in one immediate transaction.
+The remaining request/catalog state is still in the mailbox during this stage.
+The state adapter preserves existing domain function contracts; history uses that
+adapter too. Migrated fields are removed from JSON, so there is one authority.
+Migration compares reconstructed state against the original before committing;
+an error rolls back both DDL and data. Newer schema versions fail closed.
+
+Before production migration, take a consistent SQLite backup and verify it on the
+actual host. Do not run a pre-migration release against schema 1: it cannot read
+access tables. For rollback, stop writes and use the new release's code:
+
+```sh
+python3 -m server.migrations /path/to/workspace.sqlite3 /private/restore/workspace.sqlite3
+```
+
+This creates an exclusive mode-0600 schema-0 copy using SQLite backup, including
+sessions/history/push tables and changes made since migration. It reconstructs
+the legacy mailbox and verifies database integrity without changing the source.
+Switch the old service to the restored database only while stopped; retain other
+service data such as uploaded files and VAPID keys. Never overwrite a running
+SQLite file or replace it without handling its WAL/SHM sidecars.
+
+Tests cover migration parity, repeated startup, interrupted migration and retry,
+mutation rollback, newer-schema rejection and restoration of post-migration data.
+This checkpoint has not yet been deployed to production.
