@@ -1,0 +1,13 @@
+.local/
+__pycache__/
+*.pyc
+.env
+.env.*
+*.sqlite3
+*.sqlite3-*
+*.log
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
