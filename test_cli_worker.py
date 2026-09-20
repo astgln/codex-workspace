@@ -1,11 +1,12 @@
 import json
+import asyncio
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from cli_worker import dispatch_one
+from cli_worker import dispatch_one, dispatch_shared
 from web_client import Queue
 
 T='11111111-1111-1111-1111-111111111111'
@@ -66,3 +67,41 @@ class WorkerTests(unittest.TestCase):
         self.catalog['threads'][0]['read_only']=True
         self.assertEqual(self.dispatch()['status'],'idle')
         self.assertEqual(self.q.pending()['messages'][0]['local_status'],'pending')
+
+    def shared(self, *, active=False, fail=False):
+        owner=self
+        class Client:
+            def __init__(self,socket):pass
+            async def __aenter__(self):return self
+            async def __aexit__(self,*exc):pass
+            async def call(self,method,params):
+                if method in ('thread/read','thread/resume'):
+                    return {'thread':{'status':{'type':'active' if active else 'idle'}}}
+                if method=='turn/start':
+                    if fail:raise OSError('connection lost')
+                    owner.run_cli([],input=params['input'][0]['text'])
+                    return {'turn':{'id':V}}
+                raise AssertionError(method)
+            async def wait_completed(self,thread,turn):
+                owner.assertEqual((thread,turn),(T,V))
+                return {'id':V,'status':'completed'}
+        with patch('cli_worker.snapshot',return_value=self.state):
+            return asyncio.run(dispatch_shared(self.q,self.home,self.home/'socket',self.catalog,Client))
+
+    def test_shared_delivers_plain_text_and_pins_turn(self):
+        self.assertEqual(self.shared()['status'],'completed')
+        row=self.q.db.execute('SELECT * FROM requests').fetchone()
+        self.assertEqual(json.loads(row['dispatch'])['turn_id'],V)
+        self.assertEqual(json.loads(row['dispatch'])['transport'],'shared')
+        self.assertEqual(self.shared()['status'],'idle')
+        self.assertEqual(self.calls,1)
+
+    def test_shared_does_not_interrupt_active_task(self):
+        self.assertEqual(self.shared(active=True)['status'],'waiting_for_tasks')
+        self.assertEqual(self.calls,0)
+        self.assertEqual(self.q.pending()['messages'][0]['local_status'],'pending')
+
+    def test_shared_disconnect_leaves_intent_without_resending(self):
+        with self.assertRaises(OSError):self.shared(fail=True)
+        self.assertEqual(self.shared()['status'],'needs_reconciliation')
+        self.assertEqual(self.calls,0)

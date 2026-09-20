@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Outbound collector using the installed CLI to resume approved local tasks."""
 import argparse
+import asyncio
 import json
 import os
 from pathlib import Path
@@ -17,7 +18,7 @@ from web_client import Queue
 
 def collect(queue, home, row):
     dispatch = json.loads(row['dispatch'])
-    if dispatch.get('transport') != 'cli':
+    if dispatch.get('transport') not in ('cli','shared','shared_probe'):
         return False
     reply = recover_cli(locate(home/'sessions',dispatch['thread']), dispatch['thread'],
                         dispatch['prompt'], dispatch['baseline'])
@@ -27,6 +28,64 @@ def collect(queue, home, row):
         queue.sent(row['id'],dispatch['marker'])
     queue.publish(row['id'],{**reply,'marker':dispatch['marker']})
     return True
+
+
+def request_text(request):
+    prompt=request['text']
+    if request['files']:
+        prompt += '\n\nВложения:\n' + '\n'.join(
+            json.dumps({'name': f['name'], 'path': f['path']}, ensure_ascii=False)
+            for f in request['files'])
+    return prompt
+
+
+async def dispatch_shared(queue, home, socket, catalog, client_factory=None):
+    from shared_rpc import SharedRPC
+    client_factory=client_factory or SharedRPC
+    for row in queue.db.execute("SELECT * FROM requests WHERE status IN ('dispatching','dispatched')").fetchall():
+        collect(queue,home,row)
+    allowed={t['id'] for t in catalog['threads'] if not t.get('read_only',False)}
+    pending=[m for m in queue.pending()['messages'] if m['local_status']=='pending' and m['thread'] in allowed]
+    waiting=[]
+    if pending:
+        async with client_factory(socket) as client:
+            for item in pending:
+                unresolved=queue.db.execute("SELECT 1 FROM requests WHERE status IN ('dispatching','dispatched') AND json_extract(payload,'$.thread')=?",(item['thread'],)).fetchone()
+                if unresolved:
+                    continue
+                metadata=await client.call('thread/read',{'threadId':item['thread'],'includeTurns':False})
+                if metadata['thread']['status']['type'] not in ('idle','notLoaded'):
+                    waiting.append({'id':item['id'],'reason':'task_active'})
+                    continue
+                before=snapshot(home,item['thread'],require_unowned=False)
+                resumed=await client.call('thread/resume',{'threadId':item['thread'],'excludeTurns':True})
+                if resumed['thread']['status']['type']!='idle':
+                    waiting.append({'id':item['id'],'reason':'task_active'})
+                    continue
+                after=snapshot(home,item['thread'],require_unowned=False)
+                if before['settings']!=after['settings']:
+                    raise BridgeError('Shared resume changed task settings; dispatch stopped')
+                request=queue.begin(item['id'],item['thread'],after['baseline'])
+                prompt=request_text(request)
+                with queue.db:
+                    row=queue.db.execute('SELECT dispatch FROM requests WHERE id=?',(item['id'],)).fetchone()
+                    dispatch=json.loads(row['dispatch'])
+                    dispatch.update(transport='shared',prompt=prompt,settings=after['settings'])
+                    queue.db.execute('UPDATE requests SET dispatch=? WHERE id=?',(json.dumps(dispatch),item['id']))
+                started=await client.call('turn/start',{'threadId':item['thread'],'input':[{'type':'text','text':prompt}]})
+                turn=started['turn']['id']
+                with queue.db:
+                    dispatch['turn_id']=turn
+                    queue.db.execute('UPDATE requests SET dispatch=? WHERE id=?',(json.dumps(dispatch),item['id']))
+                queue.sent(item['id'],request['marker'])
+                await client.wait_completed(item['thread'],turn)
+                row=queue.db.execute('SELECT * FROM requests WHERE id=?',(item['id'],)).fetchone()
+                matched=collect(queue,home,row)
+                return {'status':'completed' if matched else 'awaiting_persisted_reply','id':item['id']}
+    unresolved=[row['id'] for row in queue.db.execute("SELECT id FROM requests WHERE status IN ('dispatching','dispatched')")]
+    if unresolved:
+        return {'status':'needs_reconciliation','ids':unresolved}
+    return {'status':'waiting_for_tasks','requests':waiting} if waiting else {'status':'idle'}
 
 
 def dispatch_one(queue, home, executable, catalog, run=subprocess.run):
@@ -47,11 +106,7 @@ def dispatch_one(queue, home, executable, catalog, run=subprocess.run):
             continue
         args = command(executable,state)
         request = queue.begin(item['id'],item['thread'],state['baseline'])
-        prompt = request['text']
-        if request['files']:
-            prompt += '\n\nВложения:\n' + '\n'.join(
-                json.dumps({'name': f['name'], 'path': f['path']}, ensure_ascii=False)
-                for f in request['files'])
+        prompt = request_text(request)
         with queue.db:
             row=queue.db.execute('SELECT dispatch FROM requests WHERE id=?',(item['id'],)).fetchone()
             dispatch=json.loads(row['dispatch'])
@@ -84,11 +139,14 @@ def main():
     os.umask(0o077)
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--state',type=Path,default=STATE)
-    parser.add_argument('--codex',type=Path,required=True)
+    parser.add_argument('--codex',type=Path)
+    parser.add_argument('--transport',choices=('cli','shared'),default='cli')
     parser.add_argument('--catalog',type=Path,required=True)
     parser.add_argument('--interval',type=int,default=10)
     parser.add_argument('--once',action='store_true')
     args=parser.parse_args()
+    if args.transport=='cli' and args.codex is None:
+        parser.error('--codex is required for CLI transport')
     if not 1<=args.interval<=300:
         parser.error('interval must be 1..300 seconds')
     home=Path(os.environ.get('CODEX_HOME',Path.home()/'.codex'))
@@ -106,7 +164,10 @@ def main():
                 try:
                     api=API(config)
                     queue.tick(api)
-                    result=dispatch_one(queue,home,args.codex,catalog)
+                    if args.transport=='shared':
+                        result=asyncio.run(dispatch_shared(queue,home,home/'app-server-control/app-server-control.sock',catalog))
+                    else:
+                        result=dispatch_one(queue,home,args.codex,catalog)
                     queue.tick(api)
                 finally:
                     queue.db.close()

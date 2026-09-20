@@ -31,9 +31,9 @@ def writer_busy(home, thread):
         os.close(fd)
 
 
-def snapshot(home, thread):
+def snapshot(home, thread, *, require_unowned=True):
     """Copy current task settings, without credentials or conversation content."""
-    if writer_busy(home, thread):
+    if require_unowned and writer_busy(home, thread):
         return {'status': 'busy', 'thread': thread}
     path = locate(Path(home) / 'sessions', thread)
     if path.is_symlink():
@@ -68,7 +68,7 @@ def snapshot(home, thread):
                 'approvals_reviewer', 'permission_profile', 'cwd', 'runtime_workspace_roots')
     if any(key not in settings for key in required):
         raise BridgeError('Incomplete persisted task settings')
-    if writer_busy(home, thread):
+    if require_unowned and writer_busy(home, thread):
         return {'status': 'busy', 'thread': thread}
     return {'status': 'ready', 'thread': thread, 'baseline': baseline,
             'settings': {key: settings[key] for key in required +
