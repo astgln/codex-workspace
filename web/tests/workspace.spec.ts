@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 
 async function fixture(page: Page, role: 'owner'|'member' = 'owner') {
   const threads = [{id:'thread-launcher',title:'Launcher',status:'idle'}, {id:'thread-hd',title:'HD',status:'idle'}];
-  const state = {user:{id:10,role},threads,messages:[] as any[],members:[{id:20,username:'friend',threads:[]}],catalog_updated:1,collector_seen:Date.now()/1000};
+  const state = {user:{id:role==='owner'?10:20,role},threads,messages:[] as any[],members:[{id:20,username:'friend',threads:[]}],catalog_updated:1,collector_seen:Date.now()/1000};
   const sent:any[] = [], decisions:any[] = [];
   let loggedIn=false;
   await page.route('**/auth/**',route=>{
@@ -25,7 +25,7 @@ async function fixture(page: Page, role: 'owner'|'member' = 'owner') {
     else if(path==='/web/state')output=state;
     else if(path==='/web/history')output={messages:[],before:null,synced_at:1,loading_older:false,pending:false};
     else if(path==='/web/messages'){
-      sent.push(body); const item={...body,id:-sent.length,sender:10,status:'awaiting_approval',snapshot:'immutable-snapshot',created:Date.now()/1000,expires:Date.now()/1000+86400};state.messages.push(item);output=item;
+      sent.push(body); const item={...body,id:-sent.length,sender:state.user.id,status:role==='owner'?'approved':'awaiting_approval',snapshot:'immutable-snapshot',created:Date.now()/1000,expires:Date.now()/1000+86400};state.messages.push(item);output=item;
     } else if(path==='/web/decisions'){
       decisions.push(body); const item=state.messages.find(m=>m.id===body.id);item.status=body.decision;output=item;
     } else if(path==='/web/grants')state.members[0].threads=body.threads;
@@ -47,11 +47,15 @@ test('drafts follow threads, sending preserves target, approval uses exact snaps
   await page.getByRole('button',{name:'Launcher',exact:true}).click();
   await expect(page.getByRole('textbox',{name:'Сообщение',exact:true})).toHaveValue('Launcher draft');
   await page.getByRole('button',{name:'Отправить',exact:true}).click();
-  await expect(page.getByText('Ожидает одобрения',{exact:true})).toBeVisible();
-  expect(f.sent[0]).toMatchObject({thread:'thread-launcher',text:'Launcher draft'});
-  await page.getByRole('button',{name:'Передать в Codex',exact:true}).click();
   await expect(page.getByText('Ожидает Codex',{exact:true})).toBeVisible();
-  expect(f.decisions[0]).toEqual({id:-1,snapshot:'immutable-snapshot',decision:'approved'});
+  await expect(page.getByRole('button',{name:'Передать в Codex',exact:true})).toHaveCount(0);
+  expect(f.decisions).toHaveLength(0);
+  expect(f.sent[0]).toMatchObject({thread:'thread-launcher',text:'Launcher draft'});
+  f.state.messages.push({id:-2,sender:20,thread:'thread-launcher',text:'Member request',status:'awaiting_approval',snapshot:'member-snapshot',created:Date.now()/1000});
+  await page.getByRole('button',{name:'Обновить',exact:true}).click();
+  await page.getByRole('button',{name:'Передать в Codex',exact:true}).click();
+  await expect(page.getByText('Ожидает одобрения',{exact:true})).toHaveCount(0);
+  expect(f.decisions[0]).toEqual({id:-2,snapshot:'member-snapshot',decision:'approved'});
   await page.getByRole('button',{name:'HD',exact:true}).click();
   await expect(page.getByRole('textbox',{name:'Сообщение',exact:true})).toHaveValue('HD draft');
 });
@@ -79,7 +83,7 @@ test('mobile navigation and untrusted markdown stay in bounds',async({page})=>{
 });
 
 test('uploaded files remain attached to their original thread and approval payload',async({page})=>{
-  const f=await fixture(page);
+  const f=await fixture(page,'member');
   let attachment:any;
   await page.route('**/web/uploads/**',async route=>{
     const path=new URL(route.request().url()).pathname;
