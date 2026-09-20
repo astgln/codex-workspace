@@ -69,7 +69,7 @@ SQLite file or replace it without handling its WAL/SHM sidecars.
 
 Tests cover migration parity, repeated startup, interrupted migration and retry,
 mutation rollback, newer-schema rejection and restoration of post-migration data.
-This checkpoint has not yet been deployed to production.
+This checkpoint was deployed with the first refactoring release; see the verified release record below.
 
 ## Server domain checkpoint
 
@@ -107,3 +107,16 @@ Private output mode is explicit even when invoking execution outside launchd.
 The queue remains in `web_client.Queue`; deeper queue decomposition and graceful
 service lifecycle work are still outstanding. Source changes do not restart a
 running service; deploy these modules together at an idle checkpoint.
+
+
+## First deployed refactoring release
+
+Release `a80f8c2853de944fec09da9a61f9f642f29882f1508c684b31159d5b591f57ab`
+was installed through SSH with archive SHA-256 verification. The installer made
+a consistent private database backup, rehearsed migration and legacy restoration,
+and only then switched the service. Post-release checks confirmed schema 1,
+SQLite integrity, no foreign-key errors, no duplicate access fields in the
+residual mailbox, preserved history/session tables and healthy active service.
+Validation: 169 Python tests and 21 browser tests passed; production browser
+login/member acceptance and iOS push are separate outstanding checks.
+The local CLI worker has not been restarted to load its refactored modules yet.
