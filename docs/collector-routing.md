@@ -238,3 +238,16 @@ use the same effective task permissions.
 History follows the same explicit local catalog. Refresh that catalog from the
 app tools when projects or tasks are added; journal polling does not discover
 new projects by itself.
+
+### Проверка MCP из отдельного процесса
+
+Read-only probe штатного `codex-app-tools` из установленного приложения,
+с унаследованным `CODEX_APP_TOOLS_PIPE_PATH`, прошёл MCP initialize. Следующий
+`tools/list` вернул `-32603: Codex app tools pipe closed`. Инструменты не
+вызывались, сообщения не отправлялись, новый App Server не запускался.
+Само существование локального сокета и переменной окружения поэтому не
+доказывает доступность desktop-инструментов для launchd-обработчика.
+Не копировать эту переменную в постоянную службу как якобы проверенное решение;
+не подменять идентификаторы клиентов или контекст хода, чтобы обойти отказ.
+Обычный CLI resume и доступ к desktop MCP — разные проверки. Постоянная
+доставка с сохранением desktop-инструментов пока не подтверждена.
