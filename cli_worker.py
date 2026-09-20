@@ -11,6 +11,7 @@ from bridge import BridgeError, exclusive
 from cloud_client import API, STATE
 from web_client import Queue
 from worker_dispatch import dispatch_one
+from worker_lifecycle import shutdown_event
 
 
 def main():
@@ -28,9 +29,14 @@ def main():
     if not 1<=args.interval<=300:
         parser.error('interval must be 1..300 seconds')
     home=Path(os.environ.get('CODEX_HOME',Path.home()/'.codex'))
+    with shutdown_event() as stop:
+        return serve(args, home, stop)
+
+
+def serve(args, home, stop):
     previous_result=None
     try:
-        while True:
+        while not stop.is_set():
             config=json.loads((args.state/'web.json').read_text())
             if config.get('paused',True):
                 return 0
@@ -42,7 +48,7 @@ def main():
                 try:
                     api=API(config)
                     queue.tick(api)
-                    result=dispatch_one(queue,home,args.codex,catalog,api=api)
+                    result=dispatch_one(queue,home,args.codex,catalog,api=api,should_stop=stop.is_set)
                     queue.tick(api)
                 finally:
                     queue.db.close()
@@ -55,7 +61,8 @@ def main():
             previous_result=result
             if args.once:
                 return 0
-            time.sleep(args.interval)
+            stop.wait(args.interval)
+        return 0
     except (BridgeError,OSError,ValueError,KeyError) as exc:
         print(str(exc) if isinstance(exc,BridgeError) else 'CLI collector error; details hidden',file=sys.stderr)
         return 1

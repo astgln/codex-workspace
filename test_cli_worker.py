@@ -48,6 +48,13 @@ class WorkerTests(unittest.TestCase):
         with patch('worker_dispatch.snapshot',return_value=self.state),patch('worker_dispatch.command',return_value=['codex','exec','resume',T,'-']):
             return dispatch_one(self.q,self.home,Path('/codex'),self.catalog,run or self.run_cli,api=self.api)
 
+    def test_stop_after_preflight_creates_no_dispatch_intent(self):
+        with patch('worker_dispatch.snapshot',return_value=self.state), patch('worker_dispatch.command',return_value=['codex']):
+            result=dispatch_one(self.q,self.home,Path('/codex'),self.catalog,api=self.api,should_stop=lambda:True)
+        self.assertEqual(result, {'status':'stopping'})
+        self.assertEqual(self.q.pending()['messages'][0]['local_status'], 'pending')
+        self.api.call.assert_not_called()
+
     def test_success_is_correlated_and_not_repeated(self):
         self.assertEqual(self.dispatch()['status'],'completed')
         self.assertEqual(self.dispatch()['status'],'idle')

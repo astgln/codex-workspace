@@ -7,7 +7,7 @@ from worker_recovery import collect, request_text
 from worker_execution import execute
 
 
-def dispatch_one(queue, home, executable, catalog, run=subprocess.run, *, api):
+def dispatch_one(queue, home, executable, catalog, run=subprocess.run, *, api, should_stop=lambda: False):
     # Recover first. An interrupted dispatch is never submitted a second time.
     for row in queue.db.execute("SELECT * FROM requests WHERE status IN ('dispatching','dispatched')").fetchall():
         collect(queue,home,row)
@@ -30,6 +30,8 @@ def dispatch_one(queue, home, executable, catalog, run=subprocess.run, *, api):
             # No dispatch intent is created until settings can be preserved.
             waiting.append({'id':item['id'],'reason':'task_settings_unavailable'})
             continue
+        if should_stop():
+            return {'status': 'stopping'}
         request = queue.begin(item['id'],item['thread'],state['baseline'],api=api)
         prompt = request_text(request)
         with queue.db:
