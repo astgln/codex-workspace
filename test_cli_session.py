@@ -39,6 +39,14 @@ class SessionTests(unittest.TestCase):
         self.assertEqual(result['settings']['reasoning_effort'], 'high')
         self.assertNotIn('PRIVATE', json.dumps(result))
 
+    def test_legacy_settings_bind_to_verified_session_identity(self):
+        del self.rows[1]['payload']['thread_id']
+        self.write()
+        self.assertEqual(snapshot(self.home,T)['settings']['model'],'test-model')
+        self.rows[1]['payload']['thread_id']=U
+        self.write()
+        with self.assertRaises(BridgeError):snapshot(self.home,T)
+
     def test_busy_lock_is_not_removed(self):
         folder = self.home / 'thread-writer-locks'
         folder.mkdir()
@@ -83,6 +91,14 @@ class SessionTests(unittest.TestCase):
         self.assertEqual(profile['filesystem']['/project/space " quote'],'write')
         self.assertEqual(args[-4:],['resume',T,'--json','-'])
         self.assertNotIn('--dangerously-bypass-approvals-and-sandbox',args)
+        entries=self.settings['permission_profile']['file_system']['entries']
+        entries.append(dict(entries[0]))
+        self.write()
+        self.assertEqual(command('/bin/codex',snapshot(self.home,T)),args)
+        entries[-1]['access']='write'
+        self.write()
+        with self.assertRaises(BridgeError):command('/bin/codex',snapshot(self.home,T))
+
 
     def test_command_rejects_unrestricted_permissions(self):
         self.settings['permission_profile']={'type':'unrestricted'}

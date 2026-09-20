@@ -55,7 +55,7 @@ def snapshot(home, thread, *, require_unowned=True):
             if record.get('type') != 'event_msg':
                 continue
             if payload.get('type') == 'thread_settings_applied':
-                if payload.get('thread_id') != thread:
+                if payload.get('thread_id') not in (None, thread):
                     raise BridgeError('Settings belong to another task')
                 settings = payload.get('thread_settings')
             if payload.get('type') == 'task_started':
@@ -107,7 +107,7 @@ def command(executable, state):
             path = ':' + target['value']['kind']
         else:
             raise BridgeError('Unsupported permission target')
-        if entry['access'] not in ('read','write','deny') or path in filesystem:
+        if entry['access'] not in ('read','write','deny') or (path in filesystem and filesystem[path] != entry['access']):
             raise BridgeError('Ambiguous filesystem permissions')
         # Keep explicit read restrictions even for absent protected paths.
         filesystem[path] = entry['access']

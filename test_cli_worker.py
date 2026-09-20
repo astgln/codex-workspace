@@ -69,6 +69,14 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(self.dispatch()['status'],'idle')
         self.assertEqual(self.q.pending()['messages'][0]['local_status'],'pending')
 
+    def test_invalid_settings_remain_pending_without_dispatch_intent(self):
+        from bridge import BridgeError
+        with patch('cli_worker.snapshot',side_effect=BridgeError('unsupported settings')):
+            result=dispatch_one(self.q,self.home,Path('/codex'),self.catalog,api=self.api)
+        self.assertEqual(result,{'status':'waiting_for_tasks','requests':[{'id':-1,'reason':'task_settings_unavailable'}]})
+        self.assertEqual(self.q.pending()['messages'][0]['local_status'],'pending')
+        self.assertEqual(self.calls,0)
+
     def shared(self, *, active=False, fail=False, slow=False):
         owner=self
         class Client:

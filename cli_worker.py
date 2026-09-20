@@ -105,11 +105,17 @@ def dispatch_one(queue, home, executable, catalog, run=subprocess.run, *, api):
         unresolved = queue.db.execute("SELECT 1 FROM requests WHERE status IN ('dispatching','dispatched') AND json_extract(payload,'$.thread')=?",(item['thread'],)).fetchone()
         if unresolved:
             continue
-        state = snapshot(home,item['thread'])
-        if state['status'] != 'ready':
-            waiting.append({'id':item['id'],'reason':'desktop_writer_lock'})
+        try:
+            state = snapshot(home,item['thread'])
+            if state['status'] != 'ready':
+                waiting.append({'id':item['id'],'reason':'desktop_writer_lock'})
+                continue
+            args = command(executable,state)
+        except (BridgeError,OSError,ValueError,KeyError):
+            # One unsupported task must not stop unrelated approved requests.
+            # No dispatch intent is created until settings can be preserved.
+            waiting.append({'id':item['id'],'reason':'task_settings_unavailable'})
             continue
-        args = command(executable,state)
         request = queue.begin(item['id'],item['thread'],state['baseline'],api=api)
         prompt = request_text(request)
         with queue.db:
