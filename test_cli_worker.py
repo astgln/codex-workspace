@@ -6,7 +6,8 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch, Mock
 
-from cli_worker import dispatch_one, dispatch_shared
+from worker_dispatch import dispatch_one
+from legacy_shared_worker import dispatch_shared
 from web_client import Queue
 
 T='11111111-1111-1111-1111-111111111111'
@@ -44,7 +45,7 @@ class WorkerTests(unittest.TestCase):
         return SimpleNamespace(returncode=0)
 
     def dispatch(self,run=None):
-        with patch('cli_worker.snapshot',return_value=self.state),patch('cli_worker.command',return_value=['codex','exec','resume',T,'-']):
+        with patch('worker_dispatch.snapshot',return_value=self.state),patch('worker_dispatch.command',return_value=['codex','exec','resume',T,'-']):
             return dispatch_one(self.q,self.home,Path('/codex'),self.catalog,run or self.run_cli,api=self.api)
 
     def test_success_is_correlated_and_not_repeated(self):
@@ -71,7 +72,7 @@ class WorkerTests(unittest.TestCase):
 
     def test_invalid_settings_remain_pending_without_dispatch_intent(self):
         from bridge import BridgeError
-        with patch('cli_worker.snapshot',side_effect=BridgeError('unsupported settings')):
+        with patch('worker_dispatch.snapshot',side_effect=BridgeError('unsupported settings')):
             result=dispatch_one(self.q,self.home,Path('/codex'),self.catalog,api=self.api)
         self.assertEqual(result,{'status':'waiting_for_tasks','requests':[{'id':-1,'reason':'task_settings_unavailable'}]})
         self.assertEqual(self.q.pending()['messages'][0]['local_status'],'pending')
@@ -95,7 +96,7 @@ class WorkerTests(unittest.TestCase):
                 owner.assertEqual((thread,turn),(T,V))
                 if slow:raise TimeoutError()
                 return {'id':V,'status':'completed'}
-        with patch('cli_worker.snapshot',return_value=self.state):
+        with patch('legacy_shared_worker.snapshot',return_value=self.state):
             return asyncio.run(dispatch_shared(self.q,self.home,self.home/'socket',self.catalog,Client,api=self.api))
 
     def test_shared_delivers_plain_text_and_pins_turn(self):

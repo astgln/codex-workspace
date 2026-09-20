@@ -92,3 +92,18 @@ all domains use the same request policy and session invalidation behavior.
 The application shell still owns navigation and conversation/composer state;
 extracting those stateful responsibilities remains a later step. Read-only task
 copy no longer assumes a special controller task exists.
+
+## Worker boundary checkpoint
+
+`cli_worker.py` now contains the service loop only. `worker_dispatch.py` owns
+preflight and durable intent, `worker_execution.py` launches the CLI with literal
+stdin and private exclusive files, and `worker_recovery.py` correlates persisted
+responses before publication. Existing interrupted dispatches are recovered before
+considering new work and never automatically resubmitted. Recovery recognizes
+historical transport markers so old uncertain records are not discarded.
+The shared App Server experiment moved to `legacy_shared_worker.py` for historical
+tests; it is no longer an available service transport or imported by the CLI loop.
+Private output mode is explicit even when invoking execution outside launchd.
+The queue remains in `web_client.Queue`; deeper queue decomposition and graceful
+service lifecycle work are still outstanding. Source changes do not restart a
+running service; deploy these modules together at an idle checkpoint.
