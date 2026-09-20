@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 
 async function fixture(page: Page, role: 'owner'|'member' = 'owner') {
   const threads = [{id:'thread-launcher',title:'Launcher',status:'idle'}, {id:'thread-hd',title:'HD',status:'idle'}];
-  const state = {user:{id:role==='owner'?10:20,role},threads,messages:[] as any[],members:[{id:20,username:'friend',threads:[]}],catalog_updated:1,collector_seen:Date.now()/1000};
+  const state = {weekly_quota:{used_percent:63,observed_at:Math.floor(Date.now()/1000),resets_at:Math.floor(Date.now()/1000)+86400},user:{id:role==='owner'?10:20,role},threads,messages:[] as any[],members:[{id:20,username:'friend',threads:[]}],catalog_updated:1,collector_seen:Date.now()/1000};
   const sent:any[] = [], decisions:any[] = [];
   let loggedIn=false;
   await page.route('**/auth/**',route=>{
@@ -251,3 +251,14 @@ test('conversation opens at end, restores reading position and anchors older his
  await expect(olderAnchor).toBeAttached();
  await expect.poll(()=>olderAnchor.evaluate(el=>el.getBoundingClientRect().top)).toBeCloseTo(oldY,0);
 });
+
+ test('weekly quota includes observation time',async({page})=>{
+  await fixture(page);
+  await expect(page.getByText('Неделя: 37% осталось')).toBeVisible();
+  await expect(page.getByLabel('Остаток недельной квоты')).toHaveAttribute('value','37');
+  await expect(page.getByText(/^Данные на /)).toBeVisible();
+ });
+ test('members see shared account quota',async({page})=>{
+  await fixture(page,'member');
+  await expect(page.getByText('Неделя: 37% осталось')).toBeVisible();
+ });

@@ -20,11 +20,6 @@ def messages(read):
     result=[]
     for turn in read.get('turns',[]):
         items=turn.get('items',[])
-        texts=['\n'.join(part.get('text','') for part in item.get('content',[]) if part.get('type')=='text')
-               for item in items if item.get('type')=='userMessage']
-        # The website already has the original user request and its actual reply;
-        # do not duplicate internal delivery envelopes in the shared conversation.
-        if any(text.startswith(('Workspace request: ','Транспортная квитанция для ')) for text in texts):continue
         created=turn.get('startedAt')
         if not isinstance(created,(int,float)) or created<0:continue
         for index,item in enumerate(items):
@@ -35,11 +30,15 @@ def messages(read):
                 text=item.get('text','');role='assistant'
             else:continue
             if not isinstance(text,str) or not text.strip():continue
+            if role=='user' and text.startswith(('Workspace request: ','Транспортная квитанция для ')):continue
+            created=item.get('createdAt',turn.get('startedAt'))
+            if not isinstance(created,(int,float)) or created<0:continue
             text=public_text(text)
             ident=str(item.get('id') or f"{turn['id']}:{index}")
             # Split very long visible messages, preserving all text and ordering.
             for part,start in enumerate(range(0,len(text),6000)):
-                result.append({'id':f'{ident}:{part}', 'position':f"{int(created):013d}:{turn['id']}:{index:06d}:{part:04d}",
+                position=item.get('position') or f"{int(created*1000):016d}:{turn['id']}:{index:06d}"
+                result.append({'id':f'{ident}:{part}', 'position':f'{position}:{part:04d}',
                                'created':int(created),'role':role,'text':text[start:start+6000]})
     return result
 

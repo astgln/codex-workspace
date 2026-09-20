@@ -2,7 +2,7 @@ import type { ResponseItem } from './types/api';
 export type Thread = { id:string; title:string; status:string; read_only?:boolean };
 export type Attachment = {id:string;name:string;size:number;sha256:string};
 export type Message = { id:number; sender:number; thread:string; text:string; created:number; expires:number; status:string; snapshot:string; events?:ResponseItem[]; result_status?:string; attachments?:Attachment[] };
-export type WorkspaceState = {user:{id:number;role:'owner'|'member'};threads:Thread[];messages:Message[];members?:{id:number;username:string;threads:string[]}[];catalog_updated:number|null;collector_seen:number|null};
+export type WorkspaceState = {weekly_quota?:{used_percent:number;resets_at:number;observed_at:number}|null;user:{id:number;role:'owner'|'member'};threads:Thread[];messages:Message[];members?:{id:number;username:string;threads:string[]}[];catalog_updated:number|null;collector_seen:number|null};
 let csrfToken = '';
 export async function signOut(){await request('/auth/logout',{});csrfToken='';}
 export async function restoreSession(){const value=await request<{csrf:string;workspace:WorkspaceState}>('/auth/session');csrfToken=value.csrf;return value.workspace;}

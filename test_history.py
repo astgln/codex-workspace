@@ -46,9 +46,9 @@ class HistoryTests(unittest.TestCase):
         self.assertNotIn('private',str(result))
 
     def test_bridge_envelopes_are_not_duplicated_as_history(self):
-        self.assertEqual(messages({'turns':[{'id':'turn','startedAt':1000,'items':[
+        self.assertEqual([m['text'] for m in messages({'turns':[{'id':'turn','startedAt':1000,'items':[
             {'type':'userMessage','content':[{'type':'text','text':'Workspace request: marker\nrequest'}]},
-            {'type':'agentMessage','phase':'final_answer','text':'reply'}]}]}),[])
+            {'type':'agentMessage','phase':'final_answer','text':'reply'}]}]})],['reply'])
 
 
 if __name__=='__main__':unittest.main()

@@ -6,3 +6,6 @@
 
 .sidebar-project-tasks{display:flex;flex-direction:column;min-height:0;flex:1}.sidebar-project-tasks[hidden]{display:none}.owner-navigation{margin-top:auto}.sidebar-project-tasks .thread-list{min-height:0}
 .assistant-message{padding:4px 3px 8px;min-width:0}.assistant-message-heading{display:flex;align-items:center;gap:10px;min-height:28px;margin-bottom:6px;color:hsl(var(--muted-foreground));font-size:11px}.assistant-message-author{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:500}.assistant-copy{display:inline-flex;align-items:center;justify-content:center;margin-left:auto;padding:6px;border-radius:6px;color:hsl(var(--muted-foreground))}.assistant-copy:hover{background:hsl(var(--overlay)/.06);color:hsl(var(--foreground))}.assistant-message-text{font-size:14px;line-height:1.7}.assistant-message-text>:first-child{margin-top:0}.assistant-message-text>:last-child{margin-bottom:0}
+
+.weekly-quota{display:flex;flex-direction:column;gap:6px;padding:14px 18px;border-top:1px solid var(--border)}
+.weekly-quota progress{width:100%;height:5px;accent-color:currentColor}

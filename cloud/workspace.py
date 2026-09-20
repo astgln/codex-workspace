@@ -125,6 +125,7 @@ def view(state, uid, owner, now):
               'threads': list(catalog.values()), 'catalog_updated': state.get('catalog_updated'),
               'collector_seen': state.get('collector_seen'), 'messages': [public_item(item) for item in state['items'].values()
                 if item.get('channel') == 'web' and (admin or item['thread'] in catalog)]}
+    result['weekly_quota'] = state.get('weekly_quota')
     if admin:
         result['members'] = [{'id': ident, 'username': name, 'threads': state.get('thread_grants', {}).get(str(ident), [])}
                              for name, ident in state['bindings'].items() if name != owner]

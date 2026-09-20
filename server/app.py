@@ -93,6 +93,20 @@ async def handle(request: Request, path: str):
         return Response('{"error":"access_denied"}',status_code=403,media_type='application/json',headers={'Cache-Control':'no-store'})
     if path == 'health':
         result = runtime.response(200,{'status':'ok','mode':'standalone-web'})
+    elif path == 'v2/usage':
+        from cloud.quota import valid
+        if request.method != 'POST':return Response(status_code=405)
+        if not runtime.authorized(event):return Response(status_code=401)
+        try:
+            data=json.loads(body)
+            if not valid(data) or data['observed_at'] > time.time()+60:raise ValueError()
+            def save_usage(state):
+                if data['observed_at'] >= state.get('weekly_quota', {}).get('observed_at', 0):
+                    state['weekly_quota']=data
+                return {'ok':True}
+            value=await run_in_threadpool(store.mutate,save_usage)
+            result=runtime.response(200,value)
+        except (ValueError,TypeError):result=runtime.response(400,{'error':'invalid_request'})
     elif path in ('web/history','v2/history/pending','v2/history/publish'):
         try:
             if request.method!='POST':return Response(status_code=405)

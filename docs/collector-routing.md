@@ -199,3 +199,23 @@ codex_app снова проходит. Разрешение на этот пер
 проверить штатный CLI-обработчик без смены транспорта desktop. Задачи, которые
 приложение продолжает удерживать, остаются ограничением; наличие свободных
 задач не доказывает готовность автономного обслуживания всех задач.
+
+### Continuous public history and quota
+
+`python3 history_watch.py --catalog /absolute/path/to/catalog.json` runs an
+independent history-only collector. It reads only explicitly catalogued task
+journals and exports completed user/assistant messages, including commentary
+inside active turns. It never dispatches requests, starts Codex, or takes task
+writer locks. A separate transport lock prevents duplicate history collectors.
+Byte checkpoints avoid rescanning large journals; incomplete trailing records
+are retried. Publication succeeds before advancing the checkpoint.
+
+Run it as a user service with an absolute working directory, private logs and
+restart-on-failure. `--once` performs one reconciliation. After a parser change,
+remove only its `history-watch.json` checkpoint to republish existing history.
+
+The collector also publishes a strict whitelist of weekly account quota fields
+from Codex's rate-limit events. All authorized participants receive those fields. The UI
+shows the observation and reset times; activity refreshes the sample, and an
+expired window displays “ожидаем обновления” instead of an invented balance.
+This service does not enable autonomous prompt delivery.
