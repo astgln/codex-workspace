@@ -10,6 +10,8 @@ import json
 import re
 import secrets
 from . import domain
+from .access import (Forbidden, is_owner, permitted_threads, requires_approval,
+                     set_grants, set_member_policy, can_submit)
 
 SESSION_TTL = 8 * 3600
 MAX_TEXT = 16000
@@ -19,8 +21,6 @@ class Unauthorized(Exception):
     pass
 
 
-class Forbidden(Exception):
-    pass
 
 
 def _session_key(bot_token):
@@ -59,11 +59,6 @@ def bind_user(state, user, allowed):
     return user['id']
 
 
-def is_owner(state, uid, owner):
-    if uid not in state['bindings'].values():
-        raise Forbidden()
-    return state['bindings'].get(owner) == uid
-
 
 def sync_catalog(state, body, project, now):
     if body.get('project_id') != project:
@@ -101,51 +96,8 @@ def sync_catalog(state, body, project, now):
     return {'count': len(catalog)}
 
 
-def permitted_threads(state, uid, owner):
-    catalog = state.get('catalog', {})
-    if is_owner(state, uid, owner):
-        return catalog
-    grants = state.get('thread_grants', {}).get(str(uid), [])
-    projects = state.get('project_grants', {}).get(str(uid), [])
-    denied = state.get('thread_denies', {}).get(str(uid), [])
-    return {key: value for key, value in catalog.items()
-            if key not in denied and (key in grants or value.get('project_id') in projects)}
 
 
-def set_grants(state, uid, owner, body):
-    if not is_owner(state, uid, owner):
-        raise Forbidden()
-    target, threads = body.get('user_id'), body.get('threads')
-    projects = body.get('projects', state.get('project_grants', {}).get(str(target), []))
-    denied = body.get('denied_threads', state.get('thread_denies', {}).get(str(target), []))
-    if (type(target) is not int or target not in state['bindings'].values() or target == uid
-            or not isinstance(threads, list) or not all(isinstance(t,str) and t in state.get('catalog', {}) for t in threads)
-            or not isinstance(projects,list) or not all(isinstance(p,str) and p in state.get('projects',{}) for p in projects)
-            or not isinstance(denied,list) or not all(isinstance(t,str) and t in state.get('catalog',{}) for t in denied)):
-        raise domain.Rejected('Invalid grant')
-    state.setdefault('thread_grants', {})[str(target)] = list(dict.fromkeys(threads))
-    state.setdefault('project_grants', {})[str(target)] = list(dict.fromkeys(projects))
-    state.setdefault('thread_denies', {})[str(target)] = list(dict.fromkeys(denied))
-    allowed=permitted_threads(state,target,owner)
-    for item in state['items'].values():
-        if item.get('channel') == 'web' and item['sender'] == target and item['thread'] not in allowed and item['status'] in ('approved', 'awaiting_approval'):
-            item['status'] = 'target_unavailable'
-    return {'ok': True}
-
-
-def requires_approval(state, uid, owner):
-    return not is_owner(state, uid, owner) and state.get('member_policies', {}).get(str(uid), {}).get('requires_approval', True) is not False
-
-
-def set_member_policy(state, uid, owner, body):
-    if not is_owner(state, uid, owner):
-        raise Forbidden()
-    target, required = body.get('user_id'), body.get('requires_approval')
-    if type(target) is not int or target not in state['bindings'].values() or target == uid or type(required) is not bool:
-        raise domain.Rejected('Invalid member policy')
-    state.setdefault('member_policies', {})[str(target)] = {'requires_approval': required}
-    # Policy applies to new requests; existing decisions and pending requests remain explicit.
-    return {'ok': True}
 
 
 def public_item(item):
@@ -173,7 +125,7 @@ def view(state, uid, owner, now):
 def submit(state, uid, owner, body, now):
     domain.cleanup(state, now)
     thread, text, nonce = body.get('thread'), body.get('text'), body.get('request_id')
-    if thread not in permitted_threads(state, uid, owner) or state['catalog'][thread].get('read_only'):
+    if not can_submit(state, uid, owner, thread):
         raise Forbidden()
     attachment_ids = body.get('attachments', [])
     if (not isinstance(attachment_ids,list) or len(attachment_ids)>4
@@ -223,7 +175,7 @@ def decision(state, uid, owner, body, now):
         raise domain.Rejected('Invalid decision')
     if item['status'] == action:
         return public_item(item)
-    if (item['status'] != 'awaiting_approval' or item['thread'] not in permitted_threads(state, item['sender'], owner) or state['catalog'][item['thread']].get('read_only')):
+    if (item['status'] != 'awaiting_approval' or not can_submit(state, item['sender'], owner, item['thread'])):
         raise domain.Rejected('Decision no longer valid')
     item.update(status=action, approved_by=uid, decision_at=now)
     return public_item(item)
@@ -234,7 +186,7 @@ def collect(state, now, owner):
     state['collector_seen'] = now
     for item in state['items'].values():
         if (item.get('channel') == 'web' and item['status'] == 'approved' and item.get('lease_until', 0) <= now
-                and item['thread'] in permitted_threads(state, item['sender'], owner) and not state['catalog'][item['thread']].get('read_only')):
+                and can_submit(state, item['sender'], owner, item['thread'])):
             item['lease'] = secrets.token_urlsafe(24)
             item['lease_until'] = now + 120
             return {**{k: item[k] for k in ('id', 'text', 'thread', 'snapshot', 'lease', 'created')},
@@ -251,11 +203,10 @@ def dispatch_allowed(state, body, now, owner):
             or item['snapshot'] != body.get('snapshot')):
         return {'allowed': False}
     try:
-        permitted = permitted_threads(state, item['sender'], owner)
+        allowed = can_submit(state, item['sender'], owner, item['thread'])
     except Forbidden:
         return {'allowed': False}
-    target = permitted.get(item['thread'])
-    return {'allowed': bool(target and not target.get('read_only'))}
+    return {'allowed': allowed}
 
 
 def publish(state, body, now):

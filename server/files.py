@@ -22,7 +22,7 @@ def public(upload):
 
 def start(state, uid, owner, body, now):
     thread = body.get('thread')
-    if thread not in workspace.permitted_threads(state,uid,owner) or state['catalog'][thread].get('read_only'):
+    if not workspace.can_submit(state,uid,owner,thread):
         raise workspace.Forbidden()
     name,size,digest,request_id = (body.get(k) for k in ('name','size','sha256','request_id'))
     if (not isinstance(name,str) or not 1 <= len(name) <= 200 or any(ord(c)<32 or c in '/\\' for c in name)
