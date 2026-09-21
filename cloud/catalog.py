@@ -1,5 +1,6 @@
 """Validated project/task catalog snapshots and target revocation."""
 import re
+import math
 from . import domain
 from .access import Forbidden
 
@@ -27,9 +28,12 @@ def sync_catalog(state, body, project, now):
             raise domain.Rejected('Invalid thread')
         if entry['id'] in catalog:
             raise domain.Rejected('Duplicate thread')
+        updated = entry.get('updated_at', 0)
+        if isinstance(updated, bool) or not isinstance(updated, (int, float)) or not math.isfinite(updated) or updated < 0:
+            raise domain.Rejected('Invalid activity timestamp')
         catalog[entry['id']] = {'id': entry['id'], 'title': entry['title'], 'project_id':entry['project_id'],
             'status': entry.get('status') if entry.get('status') in ('active', 'idle', 'notLoaded') else 'unknown',
-            'read_only': entry.get('read_only') is True}
+            'read_only': entry.get('read_only') is True, 'updated_at': updated}
     state['projects'] = projects
     state['catalog'] = catalog
     state['catalog_updated'] = now

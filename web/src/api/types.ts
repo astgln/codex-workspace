@@ -1,5 +1,5 @@
 import type { ResponseItem } from '../types/api';
-export type Thread = { project_id?:string; id:string; title:string; status:string; read_only?:boolean };
+export type Thread = { project_id?:string; id:string; title:string; status:string; read_only?:boolean; updated_at?:number };
 export type Attachment = {id:string;name:string;size:number;sha256:string};
 export type Message = { id:number; sender:number; thread:string; text:string; created:number; expires:number; status:string; snapshot:string; events?:ResponseItem[]; result_status?:string; attachments?:Attachment[] };
 export type WorkspaceState = {projects?:{id:string;title:string}[];weekly_quota?:{used_percent:number;resets_at:number;observed_at:number}|null;user:{id:number};threads:Thread[];messages:Message[];catalog_updated:number|null;collector_seen:number|null};

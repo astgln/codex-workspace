@@ -34,10 +34,12 @@ def discover(home, previous, cache):
     threads = []
     try:
         with closing(sqlite3.connect((home / 'state_5.sqlite').as_uri() + '?mode=ro', uri=True)) as db:
-            rows = db.execute('SELECT id,name,source FROM threads WHERE archived=0').fetchall()
+            columns = {row[1] for row in db.execute('PRAGMA table_info(threads)')}
+            stamp = 'COALESCE(updated_at_ms / 1000.0, updated_at, 0)' if {'updated_at_ms', 'updated_at'} <= columns else 'updated_at' if 'updated_at' in columns else '0'
+            rows = db.execute(f'SELECT id,name,source,{stamp} FROM threads WHERE archived=0').fetchall()
     except sqlite3.Error:
         raise BridgeError('Desktop catalog database unavailable') from None
-    for ident, title, source in rows:
+    for ident, title, source, updated_at in rows:
         assignment = assignments.get(ident)
         if assignment is None or ident in excluded:
             continue
@@ -60,7 +62,7 @@ def discover(home, previous, cache):
         elif activity.get('state') == 'active' and writer_busy(home, ident):
             status = 'active'
         threads.append({'id': ident, 'title': title, 'project_id': project,
-                        'status': status, 'read_only': prior.get(ident, {}).get('read_only') is True})
+                        'updated_at': updated_at or 0, 'status': status, 'read_only': prior.get(ident, {}).get('read_only') is True})
     # A concurrent project move must not produce a mixed snapshot.
     if state_path.read_bytes() != raw:
         raise BridgeError('Desktop catalog changed during read')

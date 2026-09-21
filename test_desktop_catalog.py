@@ -43,6 +43,14 @@ class DesktopCatalogTests(unittest.TestCase):
         self.assertEqual(result['threads'][0]['project_id'],'q')
         self.assertEqual(result['projects'][1]['title'],'Renamed')
 
+    def test_activity_timestamp_uses_millisecond_precision(self):
+        with closing(sqlite3.connect(self.home/'state_5.sqlite')) as db, db:
+            db.execute('alter table threads add column updated_at')
+            db.execute('alter table threads add column updated_at_ms')
+            db.execute('update threads set updated_at=100,updated_at_ms=123456 where id=?',(T,))
+        result=discover(self.home,self.previous,{})
+        self.assertEqual(result['threads'][0]['updated_at'],123.456)
+
     def test_archived_and_projectless_disappear(self):
         self.state['projectless-thread-ids']=[T]; self.write_state()
         self.assertEqual(discover(self.home,self.previous,{})['threads'],[])
