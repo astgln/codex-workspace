@@ -32,31 +32,40 @@ def read_state(db):
     return state
 
 
-def write_state(db, state):
-    # Caller owns the transaction, including all domain mutations.
-    for table in ('access_grants', 'grant_subjects', 'member_bindings', 'member_policies', 'access_sections'):
-        db.execute('DELETE FROM ' + table)
-    db.executemany('INSERT INTO access_sections VALUES(?)', [(s,) for s in SECTIONS if s in state])
-    db.executemany('INSERT INTO member_bindings VALUES(?,?)', state.get('bindings', {}).items())
-    for kind in GRANTS:
-        for uid, targets in state.get(kind, {}).items():
-            db.execute('INSERT INTO grant_subjects VALUES(?,?)', (kind, uid))
-            db.executemany('INSERT INTO access_grants VALUES(?,?,?,?)',
-                           [(kind, uid, target, pos) for pos, target in enumerate(targets)])
-    for uid, policy in state.get('member_policies', {}).items():
-        if set(policy) != {'requires_approval'} or type(policy['requires_approval']) is not bool:
-            raise ValueError('Invalid stored member policy')
-        db.execute('INSERT INTO member_policies VALUES(?,?)', (uid, int(policy['requires_approval'])))
+def write_state(db, state, previous=None):
+    def changed(sections):
+        return previous is None or any((key in state) != (key in previous) or state.get(key) != previous.get(key) for key in sections)
+
+    if changed(SECTIONS):
+        # Caller owns the transaction, including all domain mutations.
+        for table in ('access_grants', 'grant_subjects', 'member_bindings', 'member_policies', 'access_sections'):
+            db.execute('DELETE FROM ' + table)
+        db.executemany('INSERT INTO access_sections VALUES(?)', [(s,) for s in SECTIONS if s in state])
+        db.executemany('INSERT INTO member_bindings VALUES(?,?)', state.get('bindings', {}).items())
+        for kind in GRANTS:
+            for uid, targets in state.get(kind, {}).items():
+                db.execute('INSERT INTO grant_subjects VALUES(?,?)', (kind, uid))
+                db.executemany('INSERT INTO access_grants VALUES(?,?,?,?)',
+                               [(kind, uid, target, pos) for pos, target in enumerate(targets)])
+        for uid, policy in state.get('member_policies', {}).items():
+            if set(policy) != {'requires_approval'} or type(policy['requires_approval']) is not bool:
+                raise ValueError('Invalid stored member policy')
+            db.execute('INSERT INTO member_policies VALUES(?,?)', (uid, int(policy['requires_approval'])))
     normalized = set(SECTIONS)
     if db.execute('PRAGMA user_version').fetchone()[0] >= 2:
-        catalog_store.write(db, state)
+        if changed(catalog_store.ENTITIES):
+            catalog_store.write(db, state)
         normalized.update(catalog_store.ENTITIES)
     if db.execute('PRAGMA user_version').fetchone()[0] >= 3:
-        request_store.write(db, state)
+        if changed(request_store.ENTITIES):
+            request_store.write(db, state)
         normalized.update(request_store.ENTITIES)
     residual = {key: value for key, value in state.items() if key not in normalized}
-    db.execute('INSERT OR REPLACE INTO mailbox(id,value) VALUES(1,?)',
-               (json.dumps(residual, ensure_ascii=False),))
+    old_residual = None if previous is None else {key:value for key,value in previous.items() if key not in normalized}
+    if residual != old_residual:
+        db.execute('INSERT OR REPLACE INTO mailbox(id,value) VALUES(1,?)',
+                   (json.dumps(residual, ensure_ascii=False),))
+
 
 
 def migrate(db):

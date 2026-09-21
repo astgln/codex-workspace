@@ -8,6 +8,9 @@ import json
 from bridge import BridgeError
 from cloud.quota import from_record
 
+# Bump when public-record interpretation changes; checkpoints must be replayed.
+READER_VERSION = 1
+
 
 def read_public(path, thread, start_offset=0):
     if path.is_symlink():

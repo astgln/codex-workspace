@@ -11,7 +11,7 @@ import time
 from bridge import BridgeError, exclusive
 from cloud_client import API, STATE
 from history_client import publish
-from rollout_history import read_public
+from rollout_history import read_public, READER_VERSION
 from rollout_response import locate
 
 
@@ -28,7 +28,8 @@ def sync_once(api, catalog, project, root, cache):
         stat = path.stat()
         fingerprint = [stat.st_dev, stat.st_ino]
         previous = cache.get(ident, {})
-        offset = previous.get('offset', 0) if previous.get('file') == fingerprint else 0
+        compatible = previous.get('reader_version') == READER_VERSION and previous.get('checkpoint_version') == 1
+        offset = previous.get('offset', 0) if compatible and previous.get('file') == fingerprint else 0
         if offset > stat.st_size:
             offset = 0
         if offset == stat.st_size:
@@ -39,7 +40,8 @@ def sync_once(api, catalog, project, root, cache):
         publish(api, read, 'older' if offset == 0 else 'latest')
         if read.get('weekly_quota'):
             api.call('/v2/usage', read['weekly_quota'])
-        cache[ident] = {'file': fingerprint, 'offset': read['source_offset']}
+        cache[ident] = {'checkpoint_version': 1, 'reader_version': READER_VERSION,
+                        'file': fingerprint, 'offset': read['source_offset']}
         count += sum(len(t['items']) for t in read['turns'])
     return count
 

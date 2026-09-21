@@ -154,3 +154,15 @@ metadata only. Optional and legacy fields remain lossless. Request/upload copies
 are removed from the residual mailbox, and rollback reconstructs all domains.
 Tests cover a delivered request with a completed response and attachment through
 schema-2 upgrade and legacy restoration, in addition to existing lifecycle tests.
+
+## Storage writes and journal compatibility
+
+Store transactions compare the original state with domain mutations. Read-only
+polls issue no data writes; a collector heartbeat updates residual metadata only,
+without rewriting access, catalog or request tables. Mutations remain atomic.
+History checkpoints carry an explicit checkpoint format and reader version.
+A reader change or an old unversioned checkpoint triggers a replay from offset
+zero using stable message IDs; failed publication does not advance the checkpoint.
+The reader version describes our supported public-record interpretation, not an
+assumed upstream Codex schema guarantee. Format support remains explicitly limited
+to the journal records recognized by the reader and its regression fixtures.

@@ -165,3 +165,20 @@ class MigrationTests(unittest.TestCase):
         migrations.restore_legacy_copy(self.path, restored)
         with database(restored) as db:
             self.assertEqual(json.loads(db.execute('SELECT value FROM mailbox').fetchone()[0]),self.state)
+
+    def test_reads_and_heartbeats_do_not_rewrite_domain_tables(self):
+        store = Store(self.temp.name)
+        db = store.connect()
+        statements = []
+        db.set_trace_callback(statements.append)
+        with patch.object(store, 'connect', return_value=db):
+            store.mutate(copy.deepcopy)
+        self.assertFalse(any(sql.startswith(('INSERT', 'DELETE', 'UPDATE')) for sql in statements))
+        db = store.connect()
+        statements.clear()
+        db.set_trace_callback(statements.append)
+        with patch.object(store, 'connect', return_value=db):
+            store.mutate(lambda state: state.update(collector_seen=123))
+        writes = [sql for sql in statements if sql.startswith(('INSERT', 'DELETE', 'UPDATE'))]
+        self.assertEqual(len(writes), 1)
+        self.assertTrue(writes[0].startswith('INSERT OR REPLACE INTO mailbox'))

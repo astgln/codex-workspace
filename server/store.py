@@ -1,4 +1,5 @@
 """Small single-instance SQLite store; transactions never contain network I/O."""
+import copy
 import json
 import os
 from pathlib import Path
@@ -30,11 +31,12 @@ class Store:
         try:
             db.execute('BEGIN IMMEDIATE')
             state = migrations.read_state(db)
+            previous = copy.deepcopy(state)
             output = operation(state)
             value = json.dumps(state,ensure_ascii=False)
             if len(value.encode()) > 3000000:
                 raise domain.Rejected('Mailbox capacity')
-            migrations.write_state(db, state)
+            migrations.write_state(db, state, previous)
             db.commit()
             return output
         except Exception:

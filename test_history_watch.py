@@ -32,3 +32,21 @@ class WatchTests(unittest.TestCase):
     sync_once(API(),catalog,'installation',Path(tmp),{})
     catalog['threads'][0]['project_id']='not-authorized'
     with self.assertRaises(BridgeError):sync_once(API(),catalog,'installation',Path(tmp),{})
+
+ def test_reader_version_change_replays_without_advancing_on_failure(self):
+  class API:
+   def call(self,path,data):return {'threads':[]}
+  with tempfile.TemporaryDirectory() as tmp:
+   path=Path(tmp)/'journal';path.write_text(json.dumps({'type':'session_meta','payload':{'id':'task'}})+'\n')
+   stat=path.stat()
+   catalog={'project_id':'project','threads':[{'id':'task','project_id':'project'}]}
+   stale={'checkpoint_version':1,'reader_version':0,'file':[stat.st_dev,stat.st_ino],'offset':stat.st_size}
+   cache={'task':stale.copy()}
+   with patch('history_watch.locate',return_value=path), patch('history_watch.publish',side_effect=OSError('offline')):
+    with self.assertRaises(OSError):sync_once(API(),catalog,'project',Path(tmp),cache)
+   self.assertEqual(cache['task'],stale)
+   from rollout_history import read_public, READER_VERSION
+   with patch('history_watch.locate',return_value=path), patch('history_watch.read_public',wraps=read_public) as reader:
+    sync_once(API(),catalog,'project',Path(tmp),cache)
+   reader.assert_called_once_with(path,'task',0)
+   self.assertEqual(cache['task']['reader_version'],READER_VERSION)
