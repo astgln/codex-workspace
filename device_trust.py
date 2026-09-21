@@ -15,6 +15,7 @@ import time
 from cryptography.hazmat.primitives import serialization
 from cryptography.exceptions import UnsupportedAlgorithm
 from request_intent import validate_request
+from key_material import validate_bundle
 
 from workspace_crypto import (Context, CryptoError, decode, encode, open_envelope,
                               public_bytes, seal, signer_id)
@@ -88,7 +89,7 @@ class TrustStore:
     def revoke_device(self, ident: str):
         self.db.execute('UPDATE devices SET revoked=1 WHERE id=?', (ident,))
 
-    def accept_request(self, key: bytes, expected: Context, envelope: dict, *, now=None) -> dict:
+    def accept_request(self, key: bytes, expected: Context, envelope: dict, *, now=None, persist=None) -> dict:
         """Authenticate and consume a client nonce atomically, before execution.
 
         Transport redelivery cannot create a second execution even if it supplies
@@ -115,6 +116,10 @@ class TrustStore:
                 raise ReplayError('Encrypted request already accepted; do not execute again')
             self.db.execute('INSERT INTO accepted_requests VALUES(?,?,?,?)',
                             (expected.record, expected.scope, envelope['signer'], received))
+            if persist is not None:
+                # Persist the execution intent using this same connection. No
+                # network or CLI operations may run in this callback.
+                persist(self.db, request)
             self.db.execute('COMMIT')
             return request
         except BaseException:
@@ -133,7 +138,7 @@ class TrustStore:
                 'authority': encode(authority_public), 'expires': now + PAIRING_LIFETIME}
 
     def pair(self, invitation: str, device_public: bytes, offer: dict, authority_signing,
-             key_bundle: bytes, *, now=None) -> dict:
+             key_bundle: bytes, *, expected_origin: str, now=None) -> dict:
         """Consume one invitation, authorize one key, return a signed key bundle.
 
         The key bundle must contain only the locally chosen keys for this device.
@@ -170,6 +175,8 @@ class TrustStore:
                 context = Context(self.workspace, 'devices', 'key-wrap', invitation, 1)
                 if open_envelope(row['secret'], device, context, offer) != PAIRING_PROOF:
                     raise CryptoError('Invalid pairing offer')
+                validate_bundle(key_bundle, workspace=self.workspace, expected_origin=expected_origin,
+                                device=signer_id(device), authority=public_bytes(authority_signing))
                 result = seal(row['secret'], authority_signing,
                               Context(self.workspace, 'devices', 'key-wrap', invitation, 2), key_bundle)
                 self.trust_device(device_public)

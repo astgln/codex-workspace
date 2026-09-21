@@ -1,4 +1,5 @@
-import {decode, encode, openEnvelope, seal, signerId, type Envelope} from './envelope';
+import {decode, encode, openEnvelope, seal, type Envelope} from './envelope';
+import {decodeObject, validateBundle} from './bundle';
 
 export type Invitation = {v: 1; workspace: string; id: string; secret: string; authority: string; expires: number};
 const text = new TextEncoder();
@@ -45,13 +46,12 @@ export async function createPairingOffer(invitation: Invitation, device: CryptoK
   return {id: checked.id, public_key, envelope};
 }
 
-export async function openPairingGrant(invitation: Invitation, envelope: Envelope, now = Math.floor(Date.now() / 1000)) {
+export async function openPairingGrant(invitation: Invitation, envelope: Envelope, device: CryptoKey, expectedOrigin: string, now = Math.floor(Date.now() / 1000)) {
   const checked = await validateInvitation(invitation, now);
   const authority = await crypto.subtle.importKey('spki', buffer(decode(checked.authority, 256)),
     {name: 'ECDSA', namedCurve: 'P-256'}, true, ['verify']);
   const bundle = await openEnvelope(decode(checked.secret, 32, 32), authority,
     [checked.workspace, 'devices', 'key-wrap', checked.id, 2], envelope);
-  // The caller must validate the bundle schema and the intended device fingerprint
-  // before atomically persisting keys. Never install partially decoded bundles.
-  return {bundle, authority: await signerId(authority)};
+  return validateBundle(decodeObject(bundle), {workspace: checked.workspace, origin: expectedOrigin,
+    device, authority: checked.authority});
 }

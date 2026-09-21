@@ -27,6 +27,9 @@ jobs:
       - run: pip install -r crypto-requirements.txt
       - run: npm ci --prefix web --ignore-scripts
       - run: npm --prefix web run build
-      - run: cd web && npx playwright install --with-deps chromium && npx playwright test
+      - run: cd web && npx playwright install --with-deps chromium webkit && npx playwright test
+        env:
+          CRYPTO_TEST_PYTHON: python
+      - run: cd web && npx playwright test --browser webkit tests/crypto.spec.ts tests/pairing.spec.ts tests/vault.spec.ts tests/encrypted-attachments.spec.ts
         env:
           CRYPTO_TEST_PYTHON: python

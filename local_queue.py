@@ -71,6 +71,8 @@ class Queue:
             if not row or row['status'] != 'pending':
                 raise BridgeError('Dispatch already started or request not pending; do not retry automatically')
             item = json.loads(row['payload'])
+            if item.get('encrypted_envelope') is not None:
+                raise BridgeError('Encrypted requests require verified encrypted dispatch; plaintext execution is blocked')
             files=json.loads(row['files'])
             if item.get('attachments') and not files:
                 raise BridgeError('Queued attachments have not been verified locally')

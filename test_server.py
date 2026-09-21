@@ -26,6 +26,35 @@ class ServerTests(unittest.TestCase):
         self.client.__exit__(None,None,None)
         self.keys.stop();self.env.stop();self.temp.cleanup()
 
+    def test_encrypted_files_require_browser_session_csrf_and_collector_token(self):
+        from workspace_crypto import encode
+        body={'workspace':'workspace','scope':'task','id':encode(b'f'*32),'size':3,'sha256':hashlib.sha256(b'abc').hexdigest()}
+        self.assertEqual(self.client.post('/web/e2ee/files/start',json=body).status_code,401)
+        self.assertEqual(self.client.post('/v2/e2ee/files/describe',json={}).status_code,401)
+        _,csrf=self.browser_session()
+        self.assertEqual(self.client.post('/web/e2ee/files/start',json=body).status_code,403)
+        self.assertEqual(self.client.post('/web/e2ee/files/start',json=body,headers={'X-CSRF-Token':csrf}).status_code,200)
+        self.assertEqual(self.client.post('/v2/e2ee/files/start',json=body,headers={'Authorization':'Bearer collector-test-key'}).status_code,400)
+        self.assertEqual(self.client.post('/web/e2ee/files/start',json={**body,'name':'private'},headers={'X-CSRF-Token':csrf}).status_code,400)
+
+    def test_encrypted_channel_requires_separate_browser_and_collector_auth(self):
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from workspace_crypto import Context, encode, seal
+        signing=ec.generate_private_key(ec.SECP256R1())
+        context=Context('workspace','task','request',encode(b'n'*32),1)
+        body={'envelope':seal(b'k'*32,signing,context,b'test-encrypted-request')}
+        self.assertEqual(self.client.post('/web/e2ee/send',json=body).status_code,401)
+        self.assertEqual(self.client.post('/v2/e2ee/read',json={}).status_code,401)
+        _,csrf=self.browser_session()
+        self.assertEqual(self.client.post('/web/e2ee/send',json=body).status_code,403)
+        self.assertEqual(self.client.post('/web/e2ee/send',json=body,headers={'X-CSRF-Token':csrf}).status_code,200)
+        query={'workspace':'workspace','scope':'task','kind':'request','after':0}
+        self.assertEqual(self.client.post('/v2/e2ee/read',json=query,headers={'X-CSRF-Token':csrf}).status_code,401)
+        result=self.client.post('/v2/e2ee/read',json=query,headers={'Authorization':'Bearer collector-test-key'})
+        self.assertEqual(result.status_code,200)
+        self.assertEqual(result.json()['records'][0]['envelope'],body['envelope'])
+        self.assertEqual(self.client.post('/web/e2ee/send',json={'text':'plaintext'},headers={'X-CSRF-Token':csrf}).status_code,400)
+
     def test_health_and_auth_separation(self):
         self.assertEqual(self.client.get('/health').json()['mode'],'standalone-web')
         self.assertEqual(self.client.post('/web/state',json={}).status_code,401)

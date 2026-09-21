@@ -47,23 +47,28 @@ def validate_request(plaintext: bytes, context: Context, now: int) -> dict:
         raise CryptoError('Invalid encrypted attachments')
     ids = set()
     for file in files:
-        if not isinstance(file, dict) or set(file) != FILE_FIELDS:
-            raise CryptoError('Invalid encrypted attachments')
-        decode(file['id'], maximum=32, exact=32)
+        validate_attachment(file)
         if file['id'] in ids:
             raise CryptoError('Duplicate encrypted attachment')
         ids.add(file['id'])
-        name = file['name']
-        if (not isinstance(name, str) or not 1 <= len(name) <= 200 or name in ('.', '..')
-                or any(c in name for c in ('/', '\\')) or any(ord(c) < 32 or ord(c) == 127 for c in name)):
-            raise CryptoError('Invalid encrypted attachment name')
-        try:
-            name.encode('utf-8')
-        except UnicodeError:
-            raise CryptoError('Invalid encrypted attachment name') from None
-        if type(file['size']) is not int or not 1 <= file['size'] <= 5 * 1024 * 1024:
-            raise CryptoError('Invalid encrypted attachment size')
-        for field in ('sha256', 'ciphertext_sha256'):
-            if not isinstance(file[field], str) or not re.fullmatch('[0-9a-f]{64}', file[field]):
-                raise CryptoError('Invalid encrypted attachment digest')
     return value
+
+
+def validate_attachment(file):
+    if not isinstance(file, dict) or set(file) != FILE_FIELDS:
+        raise CryptoError('Invalid encrypted attachments')
+    decode(file['id'], maximum=32, exact=32)
+    name = file['name']
+    if (not isinstance(name, str) or not 1 <= len(name) <= 200 or name in ('.', '..')
+            or any(c in name for c in ('/', '\\')) or any(ord(c) < 32 or ord(c) == 127 for c in name)):
+        raise CryptoError('Invalid encrypted attachment name')
+    try:
+        if len(name.encode('utf-8')) > 200:
+            raise CryptoError('Invalid encrypted attachment name')
+    except UnicodeError:
+        raise CryptoError('Invalid encrypted attachment name') from None
+    if type(file['size']) is not int or not 1 <= file['size'] <= 5 * 1024 * 1024:
+        raise CryptoError('Invalid encrypted attachment size')
+    for field in ('sha256', 'ciphertext_sha256'):
+        if not isinstance(file[field], str) or not re.fullmatch('[0-9a-f]{64}', file[field]):
+            raise CryptoError('Invalid encrypted attachment digest')

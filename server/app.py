@@ -121,6 +121,45 @@ async def handle(request: Request, path: str):
         return Response('{"error":"access_denied"}',status_code=403,media_type='application/json',headers={'Cache-Control':'no-store'})
     if path == 'health':
         result = api.response(200,{'status':'ok','mode':'standalone-web'})
+    elif path.startswith('web/e2ee/files/') or path.startswith('v2/e2ee/files/'):
+        from . import opaque, opaque_files
+        try:
+            if request.method != 'POST':return Response(status_code=405)
+            collector = path.startswith('v2/')
+            if collector:
+                if not api.authorized(event):raise workspace.Unauthorized()
+                file_uid = None
+            else:
+                allowed = await run_in_threadpool(store.mutate, lambda state: workspace.is_owner(state,uid,os.environ['OWNER_USERNAME']))
+                if not allowed:raise workspace.Forbidden()
+                file_uid = uid
+            value = await run_in_threadpool(opaque_files.handle,store,file_uid,path.rsplit('/',1)[1],json.loads(body),collector=collector)
+            result=api.response(200,value)
+        except workspace.Unauthorized:result=api.response(401,{'error':'login_required'})
+        except workspace.Forbidden:result=api.response(403,{'error':'access_denied'})
+        except opaque.Conflict:result=api.response(409,{'error':'encrypted_file_conflict'})
+        except (ValueError,TypeError,RecursionError):result=api.response(400,{'error':'invalid_encrypted_file'})
+        except Exception:result=api.response(503,{'error':'temporarily_unavailable'})
+    elif path in ('web/e2ee/send', 'web/e2ee/read', 'v2/e2ee/publish', 'v2/e2ee/read'):
+        from . import opaque
+        try:
+            if request.method != 'POST':return Response(status_code=405)
+            collector = path.startswith('v2/')
+            if collector:
+                if not api.authorized(event):raise workspace.Unauthorized()
+            else:
+                # Only the pinned account may access opaque records.
+                allowed = await run_in_threadpool(store.mutate, lambda state: workspace.is_owner(state,uid,os.environ['OWNER_USERNAME']))
+                if not allowed:raise workspace.Forbidden()
+            data = json.loads(body)
+            operation = opaque.read if path.endswith('/read') else opaque.publish
+            value = await run_in_threadpool(operation, store, data, browser=not collector)
+            result = api.response(200,value)
+        except workspace.Unauthorized:result=api.response(401,{'error':'login_required'})
+        except workspace.Forbidden:result=api.response(403,{'error':'access_denied'})
+        except opaque.Conflict:result=api.response(409,{'error':'encrypted_conflict'})
+        except (ValueError,TypeError,RecursionError):result=api.response(400,{'error':'invalid_encrypted_record'})
+        except Exception:result=api.response(503,{'error':'temporarily_unavailable'})
     elif path == 'web/diagnostics':
         if request.method != 'POST':return Response(status_code=405)
         try:

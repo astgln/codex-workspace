@@ -37,7 +37,11 @@ class DeviceTrustTests(unittest.TestCase):
     def pair(self, invite, offer=None, device=None, now=100):
         device = device or self.device
         return self.store.pair(invite['id'], public_bytes(device), offer or self.offer(invite, device),
-                               self.authority, b'test-only-key-bundle', now=now)
+                               self.authority, self.bundle(device), expected_origin='https://workspace.example', now=now)
+
+    def bundle(self, device):
+        return json.dumps({'v':1,'workspace':'test-workspace','origin':'https://workspace.example',
+            'device':signer_id(device),'authority':encode(public_bytes(self.authority)),'revision':1,'keys':[]}, separators=(',',':')).encode()
 
     def test_untrusted_device_and_revocation_fail_closed(self):
         context, request = self.request()
@@ -76,7 +80,7 @@ class DeviceTrustTests(unittest.TestCase):
         self.assertEqual(self.pair(invite, offer, now=101), response)
         plaintext = open_envelope(decode(invite['secret'], maximum=32), self.authority.public_key(),
                                  Context('test-workspace', 'devices', 'key-wrap', invite['id'], 2), response)
-        self.assertEqual(plaintext, b'test-only-key-bundle')
+        self.assertEqual(plaintext, self.bundle(self.device))
         context, request = self.request()
         self.assertEqual(self.store.accept_request(self.key, context, request)['text'], 'test-only-request')
         self.assertIsNone(self.store.db.execute('SELECT secret FROM pairings').fetchone()[0])
@@ -92,7 +96,7 @@ class DeviceTrustTests(unittest.TestCase):
         invite = self.store.invite(public_bytes(self.authority), now=100)
         wrong = ec.generate_private_key(ec.SECP256R1())
         with self.assertRaises(CryptoError):
-            self.store.pair(invite['id'], public_bytes(self.device), self.offer(invite), wrong, b'keys', now=100)
+            self.store.pair(invite['id'], public_bytes(self.device), self.offer(invite), wrong, b'keys', expected_origin='https://workspace.example', now=100)
         self.pair(invite)
 
     def test_expired_or_tampered_invitation_cannot_enroll(self):

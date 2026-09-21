@@ -18,20 +18,22 @@ test('pairing uses a fragment, pins the authority, and rejects expired links', a
     const offer = await p.createPairingOffer(parsed, device, now);
     const proof = await c.openEnvelope(c.decode(invite.secret, 32), device.publicKey,
       [invite.workspace, 'devices', 'key-wrap', invite.id, 1], offer.envelope);
+    const bundle = {v:1, workspace:invite.workspace, origin:'https://workspace.example', device:await c.signerId(device.publicKey),
+      authority:invite.authority, revision:1, keys:[]};
     const grant = await c.seal(c.decode(invite.secret, 32), authority,
-      [invite.workspace, 'devices', 'key-wrap', invite.id, 2], new TextEncoder().encode('test-key-bundle'));
-    const opened = await p.openPairingGrant(parsed, grant, now);
+      [invite.workspace, 'devices', 'key-wrap', invite.id, 2], new TextEncoder().encode(JSON.stringify(bundle)));
+    const opened = await p.openPairingGrant(parsed, grant, device.publicKey, 'https://workspace.example', now);
     let expired = false, wrongAuthority = false, wrongOrigin = false, query = false;
     try {await p.parsePairingFragment(link.hash, now + 600);} catch {expired = true;}
     const forged = await c.seal(c.decode(invite.secret, 32), device,
       [invite.workspace, 'devices', 'key-wrap', invite.id, 2], new TextEncoder().encode('forged'));
-    try {await p.openPairingGrant(parsed, forged, now);} catch {wrongAuthority = true;}
+    try {await p.openPairingGrant(parsed, forged, device.publicKey, 'https://workspace.example', now);} catch {wrongAuthority = true;}
     try {await p.pairingLink('http://workspace.example', invite);} catch {wrongOrigin = true;}
     try {await p.pairingLink('https://workspace.example/?secret=oops', invite);} catch {query = true;}
     return {same: JSON.stringify(parsed) === JSON.stringify(invite), search: link.search,
-      proof: new TextDecoder().decode(proof), plaintext: new TextDecoder().decode(opened.bundle),
+      proof: new TextDecoder().decode(proof), recipientMatches: opened.device === await c.signerId(device.publicKey),
       expired, wrongAuthority, wrongOrigin, query, privateExportable: device.privateKey.extractable};
   });
-  expect(result).toEqual({same: true, search: '', proof: 'codex-workspace/device-pairing/v1', plaintext: 'test-key-bundle',
+  expect(result).toEqual({same: true, search: '', proof: 'codex-workspace/device-pairing/v1', recipientMatches: true,
     expired: true, wrongAuthority: true, wrongOrigin: true, query: true, privateExportable: false});
 });
