@@ -73,3 +73,15 @@ reason and repeated recovery after abort publication. Full suite: 223 cases.
 Lifecycle records alone still do not prove current process liveness after a crash;
 a stored task_started is not sufficient for authoritative live activity. Real
 member and iPhone checks remain unavailable according to the owner's latest reply.
+
+## Authoritative catalog refresh checkpoint
+
+A fresh app-tool listing returned complete available sources/hosts and preserved
+the existing app project IDs. The local state database uses different IDs even
+for identically named projects; name-based reconciliation remains invalid.
+The bounded listing discovered one additional project task. A whitelisted snapshot
+(ID, title, exact project ID and status only) was published successfully, then
+atomically installed as the common catalog for both local services. Existing
+read-only restrictions and entries absent from the bounded listing were retained.
+The catalog now contains 22 tasks. This is an explicit maintenance refresh, not
+an autonomous discovery implementation and not a replacement for that requirement.
