@@ -1,10 +1,13 @@
 # Refactoring completion audit
 
-This is an incomplete audit, not a completion claim. Baseline: `4dd1710`.
-The current GitHub Tests workflow completed successfully for that revision,
-covering Ubuntu/Python 3.12 and the production web build/browser suite. Local
-Python 3.14 validation collected 217 cases (including inherited API tests).
-Counts alone do not establish end-to-end acceptance.
+Implementation and deployment are complete. On 2026-09-21 the owner accepted
+the current version provisionally and explicitly removed the remaining live
+participant/device checks as completion gates: reported bugs will be handled as
+follow-up work. This is an acceptance decision, not fabricated test evidence.
+Latest code validation: 232 Python tests, production build and successful GitHub
+unit/web workflows for `54f96e7` and `355346f`. The deployed frontend release is
+`7530fc3fae1471c5`; publication and SSH health checks passed. Historical checkpoints
+below retain their original counts and limitations.
 
 | Requirement | Inspected evidence | Result / remaining scope |
 | --- | --- | --- |
@@ -34,18 +37,21 @@ The request service's actual report was idle with zero waiting/unresolved counts
 Both local launchd services were running and their checkpoints were fresh.
 These are point-in-time observations, not continuous availability guarantees.
 
-## Remaining acceptance work
+## Acceptance decision
 
-The owner has confirmed installed iPhone navigation and notification delivery.
-The later request for message previews was implemented and deployed; observation
-of that new presentation on the phone is still pending. The brother's real login,
-scoped access, approval and attachment round trip remain unverified. Automated
-tests do not replace these actions. The full goal is not yet complete.
+The owner confirmed installed iPhone navigation and notification delivery, then
+requested and received message previews and a nonduplicated project selector.
+On 2026-09-21 the owner instructed us to consider the application working unless
+the brother reports bugs. Therefore the previously pending participant
+login/access/attachment round trip and observation of the new preview presentation
+are no longer release or goal-completion gates. They have not been recorded as
+performed. The implementation, automated checks and deployed release are accepted;
+future reported defects will be separate follow-up work.
 
-Autonomous catalog discovery and turn-activity reconciliation, previously listed
-as blockers here, are implemented and verified as described below. Subsequent
-entries record historical checkpoints; their older device/source limitations
-are superseded by the explicit acceptance follow-ups at the end of this audit.
+Autonomous discovery uses private desktop persistence and fails closed on unknown
+schemas; this compatibility limitation is documented rather than presented as a
+supported public API. Historical device/source limitations below are superseded
+by the explicit follow-ups and this acceptance decision.
 
 ## Recovery isolation checkpoint
 
