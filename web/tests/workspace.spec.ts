@@ -422,3 +422,35 @@ test('expired session during submission clears private drafts before next login'
  await page.getByRole('button',{name:'Войти через Telegram',exact:true}).click();
  await expect(page.getByRole('textbox',{name:'Сообщение',exact:true})).toHaveValue('');
 });
+
+for(const delayedStage of ['start','finish'])test(`upload ${delayedStage} response cannot cross a session boundary`,async({page})=>{
+ await fixture(page);
+ let release:()=>void=()=>{},started:()=>void=()=>{};
+ const held=new Promise<void>(resolve=>{release=resolve;});
+ const waiting=new Promise<void>(resolve=>{started=resolve;});
+ let attachment:any;let chunks=0;
+ await page.route('**/web/uploads/**',async route=>{
+  const stage=new URL(route.request().url()).pathname.split('/').pop();
+  if(stage==='start'){
+   const body=route.request().postDataJSON();
+   attachment={id:'b'.repeat(32),name:body.name,size:body.size,sha256:body.sha256,chunk_size:49152};
+  }
+  if(stage==='chunk')chunks++;
+  if(stage===delayedStage){started();await held;}
+  await route.fulfill({json:stage==='chunk'?{ok:true}:attachment});
+ });
+ await page.locator('input[type=file]').setInputFiles({name:'Old-session.log',mimeType:'text/plain',buffer:Buffer.from('Old private bytes')});
+ await waiting;
+ await page.route('**/web/state',route=>route.fulfill({status:401,json:{error:'expired'}}));
+ await page.getByRole('button',{name:'Обновить',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Войти через Telegram',exact:true})).toBeEnabled();
+ await page.unroute('**/web/state');
+ await page.getByRole('button',{name:'Войти через Telegram',exact:true}).click();
+ await page.getByRole('textbox',{name:'Сообщение',exact:true}).fill('New session draft');
+ const response=page.waitForResponse(`**/web/uploads/${delayedStage}`);
+ release();await response;
+ await page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));
+ await expect(page.getByRole('button',{name:'Убрать Old-session.log'})).toHaveCount(0);
+ await expect(page.getByRole('textbox',{name:'Сообщение',exact:true})).toHaveValue('New session draft');
+ if(delayedStage==='start')expect(chunks).toBe(0);
+});

@@ -19,6 +19,7 @@ export function useWorkspaceSession() {
   const clearSession = useCallback(() => {
     generation.current++;
     setState(null);
+    setBusy(false);
     setResetVersion(value => value + 1);
   }, []);
   const prepare = useCallback(() => {
@@ -69,7 +70,7 @@ export function useWorkspaceSession() {
       if (current !== generation.current) return;
       if (error instanceof ApiError && error.status === 401) clearSession();
       setError(error instanceof Error ? error.message : 'Не удалось выполнить действие.');
-    } finally { setBusy(false); }
+    } finally { if (current === generation.current) setBusy(false); }
   };
   const enter = () => {
     if (!config) return;

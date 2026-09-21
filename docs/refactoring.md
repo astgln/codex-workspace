@@ -293,3 +293,14 @@ or session invalidation cannot restore the old workspace. A 401 from a submitted
 action also returns to login and clears drafts. Production build and 29 browser
 tests pass, including delayed workspace responses after logout and submission
 with an expired session. This does not change server cookies or Telegram checks.
+
+## Composer session isolation
+
+Composer drafts, attachments and in-flight UI state now belong to a session
+version. Late upload/submission responses cannot change the next session's draft.
+Multipart uploads check that version before each new network step; requests
+already sent may finish, but no remaining chunks start under a replacement
+session. The shell also clears its diff viewer and navigation state on reset.
+Browser regressions delay both upload start and finish across expiration and
+re-login, verifying no old attachment appears and no new chunks follow the old
+start response. All 31 browser tests and the production build pass.

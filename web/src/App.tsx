@@ -31,9 +31,9 @@ export function App(){
   const follow=()=>{const hash=location.hash;if(hash==='#approvals'&&state.user.role==='owner')setSection('approvals');else if(hash.startsWith('#thread=')){const id=hash.slice(8);if(state.threads.some(t=>t.id===id)){setProjectId(state.threads.find(t=>t.id===id)?.project_id||'');setSelected(id);setSection('threads');}}};
   follow();window.addEventListener('hashchange',follow);return()=>window.removeEventListener('hashchange',follow);
  },[Boolean(state)]);
- const composer=useComposer({selected,busy,setBusy,setError,action});
- const {setDrafts,setAttachments,sending,submission}=composer;
- useEffect(()=>{setDrafts({});setAttachments({});submission.current=null;setSelected('');setSection('threads');},[resetVersion]);
+ const composer=useComposer({selected,sessionVersion:resetVersion,busy,setBusy,setError,action});
+ const {sending}=composer;
+ useEffect(()=>{setSelected('');setSection('threads');setDiff(null);setProjectId('');setSearch('');setSidebar(false);},[resetVersion]);
  useEffect(()=>{if(state)setSelected(current=>state.threads.some(t=>t.id===current)?current:state.threads[0]?.id||'');},[state]);
  const history=useThreadHistory(selected,Boolean(state)&&section==='threads');
  const scroll=useConversationScroll(state&&section==='threads'?`${state.user.id}:${selected}`:'',Boolean(history.page),history.page?.before||null,before=>void history.refresh(before));
