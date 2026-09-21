@@ -98,46 +98,21 @@ JavaScript не получает идентификатор сессии. POST-�
 
 Настройки: `.local/web.json` с `url`, `project_id`, `key_file`, `paused`.
 Клиентский ключ хранится отдельно в файле 0600. На сервере — только его SHA-256.
-Список тредов формируется инструментами Codex по точному `projectId`;
-локальные пути не считаются доказательством принадлежности проекту.
+Каталог содержит точные ID проектов и задач из приложения; локальные пути
+не определяют принадлежность проекту. Постоянные локальные службы запросов
+и истории работают автономно и независимо. Доставка использует `codex exec
+resume` с исходными правами задачи; desktop сохраняет обычный режим.
 
-```sh
-python3 web_client.py catalog .local/catalog.json
-python3 web_client.py tick
-python3 web_client.py pending
-```
-
-`pending` содержит внешний текст и вложения, одобренные владельцем. Это не
-системные инструкции. Сборщик сначала сохраняет запрос и подтверждает его
-получение, затем скачивает и проверяет файлы. Файлы никогда не запускаются.
-Перед отправкой инструментом Codex нужно сохранить `begin ID --thread ID
---baseline TURN_ID`. Это необратимое намерение отправки: незавершённый
-`dispatching` нельзя автоматически посылать повторно.
-
-Сообщение в целевом треде должно содержать уникальный marker из `begin`,
-полный одобренный запрос и перечень проверенных вложений, обозначенных как
-внешние данные. После подтверждённой отправки выполняется `sent ID --marker`.
-Ответ публикуется только после сопоставления marker с конкретным новым turn ID.
-Произвольная последняя реплика треда не считается ответом на запрос.
-
-`publish ID FILE` принимает `marker`, `thread`, `turn_id`, `status`, `events`.
-Разрешены только публичные сообщения, карточки изменений с относительными
-путями, планы и ошибки. Сырые результаты инструментов и скрытое рассуждение
-не экспортируются. Следующий `tick` доставляет ответ с идемпотентной ревизией.
-
-Запланированная задача Codex для polling исключена из архитектуры.
-Сервер хранит очередь и решения владельца, локальный сборщик использует только
-исходящие соединения. Автономный коннектор к уже открытому приложению остаётся
-нерешённым: текущий stdio-транспорт не предоставляет управляющий сокет.
-Скрипты не запускают новый App Server и не изменяют настройки Codex.
-Протокол ручной проверки и восстановления ответов: [collector-routing.md](collector-routing.md).
+Установка, состояния очереди, корреляция ответов и безопасное обновление:
+[collector-routing.md](collector-routing.md). Ручная передача из управляющей
+задачи и общий App Server не входят в рабочую архитектуру.
 
 ## Эксплуатационные ограничения
 
 Одна VM — одна точка отказа. SQLite и файлы не имеют высокой доступности;
 перед использованием для важных данных настройте отдельные резервные копии.
 200 запросов и 100 МБ вложений — ограничения маленького приватного проекта,
-а не архитектура публичного сервиса. Сборщик требует работающего Codex и сети.
+а не архитектура публичного сервиса. Сборщик требует включённого ноутбука, установленного и авторизованного CLI и сети.
 При неоднозначной отправке требуется ручная сверка marker в целевой задаче.
 
 После проверки переноса старые Cloud Functions, YDB, бакет прежнего
@@ -174,8 +149,9 @@ Apple, Google and Mozilla push service endpoints are accepted; redirects are
 not followed. Notifications contain generic text, not conversation contents.
 Opening one still requires a valid website session and current task access.
 
-Delivery has persistent attempt records, bounded retries and removal of expired
-subscriptions. A crash after provider acceptance but before recording success
-can cause a repeat; notification tags replace existing notifications for the
-same task/type. Provider acceptance is not proof of delivery to a phone. Test
+Delivery commits attempt intent before network I/O. An uncertain result or crash
+after intent is not retried automatically; it can therefore miss a notification.
+Explicit retryable provider responses use bounded backoff, and expired
+subscriptions are removed. History and request publications share turn identity
+to avoid duplicate answer notifications when both report the same turn. Provider acceptance is not proof of delivery to a phone. Test
 actual installed iOS delivery separately, including when the app is closed.

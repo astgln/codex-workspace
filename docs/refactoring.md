@@ -209,18 +209,13 @@ checkpoints. Desktop was not restarted.
 
 ## Remaining implementation work
 
-- Autonomous catalog discovery and activity updates beyond the existing explicit
-  catalog snapshot; preserve installation scope and project/task access rules.
-- Separate history and quota scheduling/failure handling, and prevent one missing
-  or unsupported task journal from starving all other history synchronization.
-- Publish correlated in-progress responses while a long CLI request runs, with
-  fresh collector activity and explicit waiting/reconciliation diagnostics.
-- Finish separating queue persistence, download and publication operations from
-  the legacy local entrypoint; remove obsolete startup/documentation paths.
-- Finish frontend navigation/conversation/session boundaries and inspect current
-  runtime behavior after all collector changes.
-- Complete the real member/attachment and iOS push acceptance checks already
-  listed above. These are not replaced by fixture or provider tests.
+- Autonomous catalog discovery and activity updates beyond the explicit snapshot;
+  preserve installation scope and project/task access rules.
+- Finish frontend navigation/session boundaries and expose actionable waiting or
+  reconciliation diagnostics without leaking request contents.
+- Audit active dependencies, setup and current runtime against the final design;
+  historical checkpoints below are evidence, not current operating instructions.
+- Complete real member/attachment and iOS push acceptance checks listed above.
 
 ## History failure isolation
 
@@ -266,3 +261,12 @@ The application shell retains session effects, navigation and the scroll contain
 so extracting views does not reset reading positions or change authentication.
 The production build and all 27 browser regressions pass, including shimmer,
 reduced motion, login origin checks, approval snapshots and history anchoring.
+
+## Operating documentation and manual history parity
+
+The active collector runbook now describes the CLI and history services only.
+Controller/shared-server experiments are explicitly archived. Deployment docs
+match uncertain push semantics and link to the current runbook. Manual history
+sync delegates to the same implementation as the service, validating the entire
+catalog before any publication and continuing unrelated tasks after journal
+failures. Its aggregate output reports partial failures with exit code 1.

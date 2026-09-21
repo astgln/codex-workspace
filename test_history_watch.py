@@ -88,3 +88,28 @@ class WatchTests(unittest.TestCase):
      sync_once(api,catalog,'project',Path(tmp),cache,{})
     self.assertNotIn('pending_quota',cache['task'])
     self.assertEqual(publish.call_count,1)
+
+ def test_manual_sync_validates_full_scope_before_any_publication(self):
+  from history_client import sync_catalog
+  from bridge import BridgeError
+  from unittest.mock import Mock
+  api=Mock()
+  catalog={'project_id':'project','threads':[
+   {'id':'good','project_id':'project'},
+   {'id':'bad','project_id':'different-project'}]}
+  with self.assertRaises(BridgeError):
+   sync_catalog(api,catalog,'project',Path('/unused'))
+  api.call.assert_not_called()
+
+ def test_manual_sync_preserves_good_tasks_after_missing_journal(self):
+  from history_client import sync_catalog
+  class API:
+   def call(self,path,data):return {'threads':[]}
+  with tempfile.TemporaryDirectory() as tmp:
+   root=Path(tmp)
+   (root/'good').write_text(json.dumps({'type':'session_meta','payload':{'id':'good'}})+'\n')
+   catalog={'project_id':'project','threads':[{'id':name,'project_id':'project'} for name in ('missing','good')]}
+   with patch('history_sync.locate',side_effect=lambda root,ident:root/ident),patch('history_sync.publish') as publish:
+    result=sync_catalog(API(),catalog,'project',root)
+   self.assertEqual(result,{'messages':0,'failed_tasks':1})
+   publish.assert_called_once()

@@ -58,6 +58,14 @@ def publish(api,read,mode):
     return {'count':count,'empty_turns':sum(not t.get('items') for t in read['turns']),'more':bool(page.get('hasMore'))}
 
 
+def sync_catalog(api, catalog, project, root):
+    # Import lazily: history_sync uses this module's public-message adapter.
+    from history_sync import sync_once
+    failures = {}
+    count = sync_once(api, catalog, project, root, {}, failures)
+    return {'messages': count, 'failed_tasks': len(failures)}
+
+
 def main():
     parser=argparse.ArgumentParser();sub=parser.add_subparsers(dest='command',required=True)
     sub.add_parser('pending');command=sub.add_parser('publish');command.add_argument('file',type=Path);command.add_argument('--mode',choices=['latest','older'],required=True)
@@ -69,19 +77,14 @@ def main():
         with exclusive(STATE):
             api=API(config)
             if args.command=='sync':
-                from rollout_history import read_public
-                from rollout_response import locate
                 catalog=json.loads(args.catalog.read_text())
-                if catalog.get('project_id')!=config['project_id']:raise BridgeError('Project mismatch')
                 root=Path(os.environ.get('CODEX_HOME',Path.home()/'.codex'))/'sessions'
-                result={'threads':[]}
-                for thread in catalog.get('threads',[]):
-                    if thread.get('project_id') not in {p['id'] for p in catalog.get('projects',[{'id':config['project_id']}])}:raise BridgeError('Project mismatch')
-                    read=read_public(locate(root,thread['id']),thread['id'])
-                    result['threads'].append({'thread':thread['id'],**publish(api,read,'older')})
+                result=sync_catalog(api,catalog,config['project_id'],root)
             else:
                 result=api.call('/v2/history/pending',{}) if args.command=='pending' else publish(api,json.loads(args.file.read_text()),args.mode)
         print(json.dumps(result,ensure_ascii=False))
+        if result.get('failed_tasks'):
+            raise SystemExit(1)
     except (BridgeError,OSError,ValueError,KeyError):
         raise SystemExit('History sync failed; content and credentials hidden')
 
