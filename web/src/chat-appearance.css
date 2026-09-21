@@ -62,7 +62,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible { outline-color:
 .conversation { padding: 28px 24px 40px; }
 .conversation>div[role=status] { font-size: 11px; margin-bottom: 24px; }
 .bridge-turn { padding-bottom: 36px; }
-.message-meta { justify-content: flex-start; gap: 12px; margin-bottom: 10px; font-size: 11px; }
+.message-meta { justify-content: flex-start; gap: 12px; margin: 0 0 20px; font-size: 12px; }
 .bridge-turn:has(>.user-bubble)>.message-meta { justify-content: flex-end; }
 .user-bubble { width: fit-content; max-width: 85%; margin-left: auto; padding: 10px 20px; border: 0; border-radius: 24px; background: hsl(var(--surface-2)); }
 .delivery-status { justify-content: flex-end; margin: 8px 4px 24px; }
@@ -74,8 +74,8 @@ button:focus-visible,input:focus-visible,textarea:focus-visible { outline-color:
 .conversation .prose pre { border: 0; border-radius: 16px; padding: 18px 20px; }
 .conversation .prose code:not(pre code) { color: inherit; }
 .assistant-message { display: flex; flex-direction: column; padding: 0; }
-.assistant-message-heading { order: 2; margin: 8px 0 0; }
-.assistant-message-author { font-size: 11px; }
+.assistant-message-heading { margin: 0 0 20px; min-height: 0; gap: 12px; font-size: 12px; }
+.assistant-message-author { font-size: inherit; font-weight: 400; }
 .assistant-message-author svg { display: none; }
 .assistant-copy { margin-left: 0; padding: 8px; }
 .composer-wrap { padding: 8px 24px 12px; }
@@ -123,3 +123,13 @@ button:focus-visible,input:focus-visible,textarea:focus-visible { outline-color:
 .weekly-quota progress::-moz-progress-bar { background: var(--chat-quota); }
 .composer textarea::placeholder,.thread-search::placeholder { color: hsl(var(--muted-foreground)); opacity: 1; }
 .conversation .prose li::marker { color: hsl(var(--muted-foreground)); }
+
+/* Keep imported history and streamed replies visually consistent. */
+.bridge-turn:has(>.response-stream) { padding-bottom: 40px; }
+.assistant-message + .assistant-message { margin-top: 36px; }
+.assistant-message-actions { display: flex; margin: 8px 0 0 -8px; }
+.assistant-message-actions .assistant-copy { opacity: .65; }
+.assistant-message-actions .assistant-copy:hover,
+.assistant-message-actions .assistant-copy:focus-visible { opacity: 1; }
+.conversation .prose p { margin: 16px 0; }
+.conversation .prose code:not(pre code) { background: hsl(var(--overlay)/.06); border-radius: 4px; padding: 2px 5px; }
