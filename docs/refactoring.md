@@ -282,3 +282,14 @@ and old diagnostic tools. A subprocess test blocks all retired bot, cloud and
 shared-server modules while importing current service entrypoints. All 193 Python
 tests pass. This changes imports only; queue format, permissions and HTTP policy
 are unchanged.
+
+## Browser session boundary
+
+`workspace/useWorkspaceSession.ts` owns restore/login/logout, challenge renewal,
+workspace polling, authenticated actions and session expiration. The shell owns
+selection and clears composer state when the session reset version changes.
+Workspace requests carry an in-memory generation: responses started before logout
+or session invalidation cannot restore the old workspace. A 401 from a submitted
+action also returns to login and clears drafts. Production build and 29 browser
+tests pass, including delayed workspace responses after logout and submission
+with an expired session. This does not change server cookies or Telegram checks.

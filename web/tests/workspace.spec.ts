@@ -393,3 +393,32 @@ test('member has no diagnostics control',async({page})=>{
  await fixture(page,'member');
  await expect(page.getByText('Состояние сервиса',{exact:true})).toHaveCount(0);
 });
+
+test('late workspace response cannot restore a logged out session',async({page})=>{
+ const f=await fixture(page);
+ let release:()=>void=()=>{};
+ let started:()=>void=()=>{};
+ const waiting=new Promise<void>(resolve=>{started=resolve;});
+ const held=new Promise<void>(resolve=>{release=resolve;});
+ await page.route('**/web/state',async route=>{
+  started();await held;await route.fulfill({json:f.state});
+ });
+ await page.getByRole('button',{name:'Обновить',exact:true}).click();
+ await waiting;
+ await page.getByRole('button',{name:'Выйти',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Войти через Telegram',exact:true})).toBeVisible();
+ const response=page.waitForResponse('**/web/state');
+ release();await response;
+ await page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));
+ await expect(page.getByRole('button',{name:'Launcher',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Войти через Telegram',exact:true})).toBeVisible();
+});
+
+test('expired session during submission clears private drafts before next login',async({page})=>{
+ await fixture(page);
+ await page.getByRole('textbox',{name:'Сообщение',exact:true}).fill('Private draft from expired session');
+ await page.route('**/web/messages',route=>route.fulfill({status:401,json:{error:'expired'}}));
+ await page.getByRole('button',{name:'Отправить',exact:true}).click();
+ await page.getByRole('button',{name:'Войти через Telegram',exact:true}).click();
+ await expect(page.getByRole('textbox',{name:'Сообщение',exact:true})).toHaveValue('');
+});

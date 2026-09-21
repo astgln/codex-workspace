@@ -1,14 +1,13 @@
 /* Workspace shell adapted from LuSeptem/codex-webui AppShell; MIT notice in licenses/. */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ChevronDown, ChevronRight, Circle, Folder, Inbox, LogOut, Menu, MessageSquare, Moon, RefreshCw, ShieldCheck, Sun, X } from 'lucide-react';
 import { DiffViewerDialog } from './components/diff/DiffViewerDialog';
 import { useThreadHistory } from './History';
 import { useConversationScroll } from './ConversationScroll';
-import {PushSettings,disablePush} from './PushSettings';
+import {PushSettings} from './PushSettings';
 import { Toaster } from './components/ui/Toaster';
 import type { FileChangeItem } from './types/api';
-import { ApiError, fetchState, login, prepareLogin, restoreSession, signOut } from './api';
-import type { WorkspaceState } from './api';
+import { useWorkspaceSession } from './workspace/useWorkspaceSession';
 
 import { AccessPanel } from './workspace/AccessPanel';
 import { ProjectPanel } from './workspace/ProjectPanel';
@@ -19,36 +18,26 @@ import { LoginPage } from './workspace/LoginPage';
 import { Conversation } from './workspace/Conversation';
 
 export function App(){
- const [checking,setChecking]=useState(true);
+ const {state,checking,busy,setBusy,error,setError,resetVersion,config,preparing,prepare,refresh,action,enter,logout,cancelLogin}=useWorkspaceSession();
  const [projectId,setProjectId]=useState('');
  const [projectExpanded,setProjectExpanded]=useState(true);
- const [state,setState]=useState<WorkspaceState|null>(null),[selected,setSelected]=useState(''),[section,setSection]=useState<'threads'|'approvals'|'access'|'project'>('threads');
- const [sidebar,setSidebar]=useState(false),[error,setError]=useState(''),[busy,setBusy]=useState(false),[search,setSearch]=useState('');
- const [config,setConfig]=useState<Awaited<ReturnType<typeof prepareLogin>>|null>(null),[diff,setDiff]=useState<FileChangeItem|null>(null);
+ const [selected,setSelected]=useState(''),[section,setSection]=useState<'threads'|'approvals'|'access'|'project'>('threads');
+ const [sidebar,setSidebar]=useState(false),[search,setSearch]=useState('');
+ const [diff,setDiff]=useState<FileChangeItem|null>(null);
  const [dark,setDark]=useState(()=>localStorage.getItem('workspace-theme')!=='light');
- const loginAttempt=useRef<AbortController|null>(null);
- const preparation=useRef(0);
- const [preparing,setPreparing]=useState(false);
  useEffect(()=>{document.documentElement.classList.toggle('dark',dark);localStorage.setItem('workspace-theme',dark?'dark':'light');},[dark]);
- const prepare=useCallback(()=>{const current=++preparation.current;setError('');setConfig(null);setPreparing(true);prepareLogin().then(value=>{if(current===preparation.current)setConfig(value);}).catch(e=>{if(current===preparation.current)setError(e.message);}).finally(()=>{if(current===preparation.current)setPreparing(false);});},[]);
- useEffect(()=>{let active=true;restoreSession().then(next=>{if(active){setState(next);setSelected(next.threads[0]?.id||'');}}).catch(()=>{}).finally(()=>{if(active)setChecking(false);});return()=>{active=false;};},[]);
- useEffect(()=>{if(!state&&!checking)prepare();},[Boolean(state),checking,prepare]);
- const refresh=useCallback(async()=>{try{const next=await fetchState();setState(next);setError('');setSelected(current=>next.threads.some(t=>t.id===current)?current:next.threads[0]?.id||'');}catch(e){if(e instanceof ApiError&&e.status===401){setState(null);setDrafts({});setAttachments({});submission.current=null;}setError(e instanceof Error?e.message:'Не удалось обновить данные.');}},[]);
- useEffect(()=>{if(!state)return;const id=setInterval(()=>{if(document.visibilityState==='visible')void refresh();},8000);return()=>clearInterval(id);},[Boolean(state),refresh]);
  useEffect(()=>{
   if(!state)return;
   const follow=()=>{const hash=location.hash;if(hash==='#approvals'&&state.user.role==='owner')setSection('approvals');else if(hash.startsWith('#thread=')){const id=hash.slice(8);if(state.threads.some(t=>t.id===id)){setProjectId(state.threads.find(t=>t.id===id)?.project_id||'');setSelected(id);setSection('threads');}}};
   follow();window.addEventListener('hashchange',follow);return()=>window.removeEventListener('hashchange',follow);
  },[Boolean(state)]);
- const action=async(fn:()=>Promise<unknown>)=>{setBusy(true);setError('');try{await fn();await refresh();}catch(e){setError(e instanceof Error?e.message:'Не удалось выполнить действие.');}finally{setBusy(false);}};
  const composer=useComposer({selected,busy,setBusy,setError,action});
  const {setDrafts,setAttachments,sending,submission}=composer;
+ useEffect(()=>{setDrafts({});setAttachments({});submission.current=null;setSelected('');setSection('threads');},[resetVersion]);
+ useEffect(()=>{if(state)setSelected(current=>state.threads.some(t=>t.id===current)?current:state.threads[0]?.id||'');},[state]);
  const history=useThreadHistory(selected,Boolean(state)&&section==='threads');
  const scroll=useConversationScroll(state&&section==='threads'?`${state.user.id}:${selected}`:'',Boolean(history.page),history.page?.before||null,before=>void history.refresh(before));
- const enter=()=>{if(!config)return;const attempt=new AbortController();loginAttempt.current=attempt;setBusy(true);setError('');login(config,attempt.signal).then(refresh).catch(e=>{setError(e.message);setConfig(null);}).finally(()=>{setBusy(false);loginAttempt.current=null;});};
- useEffect(()=>{if(!config||busy||state)return;const timer=setTimeout(prepare,240000);return()=>clearTimeout(timer);},[config,busy,Boolean(state),prepare]);
- const logout=async()=>{setBusy(true);try{await disablePush();await signOut();setState(null);setDrafts({});setAttachments({});setSelected('');setSection('threads');submission.current=null;}catch(e){setError(e instanceof Error?e.message:'Не удалось выйти.');}finally{setBusy(false);}};
- if(!state)return <LoginPage checking={checking} ready={Boolean(config)} busy={busy} preparing={preparing} error={error} enter={enter} cancel={()=>loginAttempt.current?.abort()} prepare={prepare}/>;
+ if(!state)return <LoginPage checking={checking} ready={Boolean(config)} busy={busy} preparing={preparing} error={error} enter={enter} cancel={cancelLogin} prepare={prepare}/>;
  const owner=state.user.role==='owner';
  const direct=owner||state.user.requires_approval===false;
  const projects=state.projects||[{id:'legacy',title:'Warcraft'}];
