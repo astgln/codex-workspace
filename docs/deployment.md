@@ -80,3 +80,18 @@ python3 history_watch.py --catalog /absolute/path/to/catalog.json
 
 Публикация проверяет текущую ветку по `release_branch` и требует закоммиченные
 исходники. В артефакте `release.json` записываются ветка и точный commit.
+
+## Локальная раскладка checkout
+
+Основной checkout: `~/Projects/codex-workspace` (`main`). Экспериментальная
+ветка — зарегистрированный Git worktree внутри него:
+`~/Projects/codex-workspace/worktrees/experimental` (`experimental/multi-user`).
+Каталог `/worktrees/` исключён из Git основного checkout. Для нового клона:
+
+```sh
+git worktree add worktrees/experimental experimental/multi-user
+```
+
+Действующая серверная конфигурация, локальная очередь и пути фоновых служб
+относятся к экспериментальному worktree. В основной ветке не хранится вторая
+копия активной очереди. Не запускайте оба checkout на одной серверной базе.
