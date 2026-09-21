@@ -330,3 +330,13 @@ and local paths, and preserve the last verified snapshot on connection failure.
 Deletion must be based on a complete successful listing, never an empty result
 from a failed or partial read. The existing explicit catalog remains operational.
 Reference: [official app-server documentation](https://learn.chatgpt.com/docs/app-server).
+
+## Navigation boundary
+
+`workspace/useWorkspaceNavigation.ts` owns project/task selection, sections,
+mobile sidebar and notification links. Hash events consult the latest granted
+catalog rather than the catalog captured at login; ordinary polling does not
+reapply an old notification link after manual navigation. Revoked task selection
+falls back to an available task, and member links cannot open owner sections.
+Production build and all 32 browser scenarios pass (the new regression was rerun
+after waiting for catalog refresh explicitly in its fixture).

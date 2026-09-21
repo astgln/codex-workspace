@@ -454,3 +454,22 @@ for(const delayedStage of ['start','finish'])test(`upload ${delayedStage} respon
  await expect(page.getByRole('textbox',{name:'Сообщение',exact:true})).toHaveValue('New session draft');
  if(delayedStage==='start')expect(chunks).toBe(0);
 });
+
+test('notification navigation uses refreshed grants without replaying old links',async({page})=>{
+ const f=await fixture(page,'member');
+ f.state.threads.push({id:'thread-new',title:'Newly granted',status:'idle'});
+ await page.getByRole('button',{name:'Обновить',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Newly granted',exact:true})).toBeVisible();
+ await page.evaluate(()=>{location.hash='thread=thread-new';});
+ await expect(page.locator('.header-title strong')).toHaveText('Newly granted');
+ await page.getByRole('button',{name:'HD',exact:true}).click();
+ await page.getByRole('button',{name:'Обновить',exact:true}).click();
+ await expect(page.locator('.header-title strong')).toHaveText('HD');
+ f.state.threads.splice(f.state.threads.findIndex(t=>t.id==='thread-hd'),1);
+ await page.getByRole('button',{name:'Обновить',exact:true}).click();
+ await expect(page.locator('.header-title strong')).toHaveText('Launcher');
+ await page.evaluate(()=>{location.hash='thread=thread-hd';});
+ await expect(page.locator('.header-title strong')).toHaveText('Launcher');
+ await page.evaluate(()=>{location.hash='approvals';});
+ await expect(page.locator('.header-title strong')).toHaveText('Launcher');
+});

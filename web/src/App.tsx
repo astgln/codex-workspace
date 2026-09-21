@@ -7,6 +7,7 @@ import { useConversationScroll } from './ConversationScroll';
 import {PushSettings} from './PushSettings';
 import { Toaster } from './components/ui/Toaster';
 import type { FileChangeItem } from './types/api';
+import { useWorkspaceNavigation } from './workspace/useWorkspaceNavigation';
 import { useWorkspaceSession } from './workspace/useWorkspaceSession';
 
 import { AccessPanel } from './workspace/AccessPanel';
@@ -19,39 +20,24 @@ import { Conversation } from './workspace/Conversation';
 
 export function App(){
  const {state,checking,busy,setBusy,error,setError,resetVersion,config,preparing,prepare,refresh,action,enter,logout,cancelLogin}=useWorkspaceSession();
- const [projectId,setProjectId]=useState('');
- const [projectExpanded,setProjectExpanded]=useState(true);
- const [selected,setSelected]=useState(''),[section,setSection]=useState<'threads'|'approvals'|'access'|'project'>('threads');
- const [sidebar,setSidebar]=useState(false),[search,setSearch]=useState('');
+ const {projectExpanded,setProjectExpanded,selected,section,setSection,sidebar,setSidebar,search,setSearch,projects,thread,activeProject,projectThreads,openProject,choose,chooseProject}=useWorkspaceNavigation(state,resetVersion,setError);
  const [diff,setDiff]=useState<FileChangeItem|null>(null);
  const [dark,setDark]=useState(()=>localStorage.getItem('workspace-theme')!=='light');
  useEffect(()=>{document.documentElement.classList.toggle('dark',dark);localStorage.setItem('workspace-theme',dark?'dark':'light');},[dark]);
- useEffect(()=>{
-  if(!state)return;
-  const follow=()=>{const hash=location.hash;if(hash==='#approvals'&&state.user.role==='owner')setSection('approvals');else if(hash.startsWith('#thread=')){const id=hash.slice(8);if(state.threads.some(t=>t.id===id)){setProjectId(state.threads.find(t=>t.id===id)?.project_id||'');setSelected(id);setSection('threads');}}};
-  follow();window.addEventListener('hashchange',follow);return()=>window.removeEventListener('hashchange',follow);
- },[Boolean(state)]);
  const composer=useComposer({selected,sessionVersion:resetVersion,busy,setBusy,setError,action});
  const {sending}=composer;
- useEffect(()=>{setSelected('');setSection('threads');setDiff(null);setProjectId('');setSearch('');setSidebar(false);},[resetVersion]);
- useEffect(()=>{if(state)setSelected(current=>state.threads.some(t=>t.id===current)?current:state.threads[0]?.id||'');},[state]);
+ useEffect(()=>{setDiff(null);},[resetVersion]);
  const history=useThreadHistory(selected,Boolean(state)&&section==='threads');
  const scroll=useConversationScroll(state&&section==='threads'?`${state.user.id}:${selected}`:'',Boolean(history.page),history.page?.before||null,before=>void history.refresh(before));
  if(!state)return <LoginPage checking={checking} ready={Boolean(config)} busy={busy} preparing={preparing} error={error} enter={enter} cancel={cancelLogin} prepare={prepare}/>;
  const owner=state.user.role==='owner';
  const direct=owner||state.user.requires_approval===false;
- const projects=state.projects||[{id:'legacy',title:'Warcraft'}];
- const activeProject=projects.find(p=>p.id===projectId)||projects.find(p=>p.id===state.threads.find(t=>t.id===selected)?.project_id)||projects[0];
- const projectThreads=state.threads.filter(t=>!t.project_id||t.project_id===activeProject?.id);
- const thread=state.threads.find(t=>t.id===selected);
  const waiting=state.messages.filter(m=>m.status==='awaiting_approval');
  const online=state.collector_seen!==null&&Date.now()/1000-state.collector_seen<600;
- const openProject=()=>{setSection('project');setSidebar(false);setSearch('');setError('');};
- const choose=(id:string)=>{setProjectId(state.threads.find(t=>t.id===id)?.project_id||'');setSelected(id);setSection('threads');setSidebar(false);setError('');};
  return <div className="workspace flex w-screen overflow-hidden bg-background text-foreground">
   {sidebar&&<button className="sidebar-shade" aria-label="Закрыть меню" onClick={()=>setSidebar(false)}/>}
   <aside className={'workspace-sidebar '+(sidebar?'is-open':'')}><div className="sidebar-heading"><MessageSquare size={19}/><strong>Codex Workspace</strong><button className="icon-button mobile-only" onClick={()=>setSidebar(false)} aria-label="Закрыть меню"><X size={18}/></button></div>
-   <select className="thread-search" aria-label="Проект" value={activeProject?.id||''} onChange={e=>{const id=e.target.value;setProjectId(id);setSelected(state.threads.find(t=>t.project_id===id)?.id||'');setSection('project');setSearch('');setProjectExpanded(true);}}>{projects.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select>
+   <select className="thread-search" aria-label="Проект" value={activeProject?.id||''} onChange={e=>chooseProject(e.target.value)}>{projects.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select>
    <button className="project-label" onClick={()=>setProjectExpanded(value=>!value)} aria-expanded={projectExpanded} aria-controls="sidebar-project-tasks"><Folder size={15}/><strong>{activeProject?.title||'Проекты'}</strong>{projectExpanded?<ChevronDown size={14}/>:<ChevronRight size={14}/>}</button>
    <div id="sidebar-project-tasks" className="sidebar-project-tasks" hidden={!projectExpanded}><input className="thread-search" placeholder="Найти тред…" aria-label="Найти тред" value={search} onChange={e=>setSearch(e.target.value)}/>
    <nav className="thread-list">{projectThreads.filter(t=>t.title.toLowerCase().includes(search.toLowerCase())).map(t=><button key={t.id} className={'thread-row '+(selected===t.id&&section==='threads'?'selected':'')} onClick={()=>choose(t.id)}><MessageSquare size={15}/><span>{t.title}</span>{t.status==='active'&&<span className="activity-dot" title="Активная задача"/>}</button>)}{projectThreads.length===0&&<p className="small muted empty-threads">{owner?'Список тредов появится после синхронизации с Codex.':'Владелец ещё не выдал доступ к тредам.'}</p>}</nav></div>
