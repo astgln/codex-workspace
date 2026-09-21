@@ -304,3 +304,29 @@ session. The shell also clears its diff viewer and navigation state on reset.
 Browser regressions delay both upload start and finish across expiration and
 re-login, verifying no old attachment appears and no new chunks follow the old
 start response. All 31 browser tests and the production build pass.
+
+## Catalog discovery capability audit
+
+The installed CLI's generated experimental schema exposes `project/list` and
+canonical `Thread.projectId`. This is stronger evidence of protocol capability
+than the public app-server page, whose thread-list examples omit project IDs.
+However, capability is not a live connection: the read-only daemon version probe
+reported that the standard control socket did not exist. No daemon was started,
+no desktop restart occurred and no configuration was changed.
+
+A read-only inspection of the local state database found project tables and a
+thread project_id column, but their assignments did not match the existing app
+catalog: none of the 21 catalogued tasks had the same project assignment, and no
+active task referenced those database projects. Thus this database is not proven
+to be the authoritative catalog for this desktop installation. Mapping by cwd,
+name, or position would invent relationships used by inherited access grants.
+Do not deploy such a mapping or overwrite the working catalog with that snapshot.
+
+Autonomous discovery remains incomplete pending an accessible authoritative
+source with exact project/task identities. A future adapter must validate all
+pages before replacing the catalog, reject repeated cursors/duplicate IDs and
+unknown project references, retain explicit read-only restrictions, omit previews
+and local paths, and preserve the last verified snapshot on connection failure.
+Deletion must be based on a complete successful listing, never an empty result
+from a failed or partial read. The existing explicit catalog remains operational.
+Reference: [official app-server documentation](https://learn.chatgpt.com/docs/app-server).
