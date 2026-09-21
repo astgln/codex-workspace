@@ -232,3 +232,14 @@ published history commits its checkpoint even when quota delivery fails; the
 pending quota sample survives in the private checkpoint and retries without
 rereading the journal. Partial passes persist successful cursors and log only
 aggregate failure counts; one-shot execution returns failure for partial passes.
+
+## Local queue separation
+
+The service imports `local_queue.Queue` directly; `web_client.py` is now an
+administrative command adapter with compatibility imports. `queue_downloads.py`
+owns verified attachment downloads and `queue_transport.py` owns receipts,
+claims and publication. The SQLite queue format is unchanged. Administrative
+commands close connections through the queue context manager. Ready responses
+are published before inbox/network/download work, so a failing inbox cannot
+starve already completed output. Recovery and immutable dispatch checks remain
+in the queue and execution adapters; no controller task is involved.

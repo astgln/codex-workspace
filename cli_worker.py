@@ -9,7 +9,7 @@ import time
 
 from bridge import BridgeError, exclusive
 from cloud_client import API, STATE
-from web_client import Queue
+from local_queue import Queue
 from worker_dispatch import dispatch_one
 from worker_lifecycle import shutdown_event
 
