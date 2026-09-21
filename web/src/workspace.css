@@ -20,3 +20,19 @@
 @keyframes request-shimmer{from{background-position:150% 0}to{background-position:-150% 0}}
 @media(prefers-reduced-motion:reduce){.request-activity-text{animation:none;background:none;-webkit-text-fill-color:currentColor}}
 @media(forced-colors:active){.request-activity-text{animation:none;background:none;-webkit-text-fill-color:currentColor}}
+
+/* Installed iOS apps draw below the status bar with viewport-fit=cover. */
+:root{--workspace-safe-top:env(safe-area-inset-top,0px);--workspace-safe-left:env(safe-area-inset-left,0px);--workspace-safe-right:env(safe-area-inset-right,0px);--workspace-safe-bottom:env(safe-area-inset-bottom,0px)}
+.workspace{padding-top:var(--workspace-safe-top);padding-left:var(--workspace-safe-left);padding-right:var(--workspace-safe-right)}
+.workspace-header>.icon-button{flex-shrink:0}
+@media(max-width:760px){
+ .workspace-header>.icon-button{min-height:44px;min-width:44px}
+ .task-menu-button{gap:5px;font-size:12px}
+ .header-title>.project-link{max-width:35%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+ .workspace-sidebar{padding-top:max(18px,var(--workspace-safe-top));padding-bottom:max(10px,var(--workspace-safe-bottom));padding-left:max(12px,var(--workspace-safe-left));overflow-y:auto;overscroll-behavior:contain}
+ .sidebar-heading,.sidebar-bottom,.push-settings,.owner-navigation,.weekly-quota{flex-shrink:0}
+ .sidebar-project-tasks{flex:1 0 120px}
+ .workspace-sidebar .icon-button{min-width:44px;min-height:44px}
+}
+.push-settings summary{cursor:pointer;padding:10px 0}
+.push-settings button{min-height:44px}

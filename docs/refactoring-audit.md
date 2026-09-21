@@ -116,3 +116,19 @@ Live follow-up: the service completed replay of all 22 version-2 checkpoints;
 its pass reported 5,358 messages, zero failed tasks and zero failed services,
 then incremental publication resumed. The initial partial pass recovered without
 restarting the worker or resending any user request.
+
+## PWA navigation acceptance follow-up
+
+The owner reported an installed PWA could not switch tasks and had not shown
+notifications. The header lacked the top safe-area inset even though the app uses
+`viewport-fit=cover` and a translucent iOS status bar. The workspace now reserves
+that inset, has an explicit mobile Tasks button with a 44px target, and keeps the
+navigation/settings scrollable on short screens. Notification settings display
+current permission/subscription state and explain the required enable action.
+
+Production build passes. Browser coverage now has 34 cases: 33 passed together,
+and the remaining installation-copy test passed after updating its renamed
+settings locator. New cases cover cold phone layout with a simulated 59px inset,
+two-way task switching, short-screen settings access, and subscription after a
+user-activated permission tap. These are browser simulations, not verification
+of an actual iOS push delivery; the owner's device check remains open.

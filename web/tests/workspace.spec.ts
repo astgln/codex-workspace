@@ -37,7 +37,7 @@ async function fixture(page: Page, role: 'owner'|'member' = 'owner') {
   });
   await page.goto('/');
   await page.getByRole('button',{name:'Войти через Telegram'}).click();
-  await expect(page.getByRole('button',{name:'Launcher',exact:true})).toBeVisible();
+  await expect(page.locator('.workspace-header')).toBeVisible();
   return {state,sent,decisions};
 }
 
@@ -269,7 +269,7 @@ test('conversation opens at end, restores reading position and anchors older his
 test('PWA manifest, worker and iPhone installation instructions',async({page})=>{
  await page.addInitScript(()=>{Object.defineProperty(navigator,'userAgent',{get:()=> 'iPhone'});});
  await fixture(page);
- await page.getByText('Приложение и уведомления',{exact:true}).click();
+ await page.locator('summary').filter({hasText:'Уведомления:'}).click();
  await expect(page.getByText(/На iPhone: Safari/)).toBeVisible();
  await expect(page.getByText(/iOS 16.4/)).toBeVisible();
  await expect(page.getByRole('button',{name:'Включить уведомления',exact:true})).toHaveCount(0);
@@ -474,4 +474,58 @@ test('notification navigation uses refreshed grants without replaying old links'
  await expect(page.locator('.header-title strong')).toHaveText('Launcher');
  await page.evaluate(()=>{location.hash='approvals';});
  await expect(page.locator('.header-title strong')).toHaveText('Launcher');
+});
+
+
+test('installed phone layout keeps task navigation below the safe area',async({page})=>{
+  await page.setViewportSize({width:390,height:844});
+  await page.addInitScript(()=>Object.defineProperty(navigator,'standalone',{value:true}));
+  await fixture(page);
+  // Browser emulation has no notch; supply the same inset received from iOS.
+  await page.evaluate(()=>document.documentElement.style.setProperty('--workspace-safe-top','59px'));
+  const menu=page.getByRole('button',{name:'Открыть треды'});
+  await expect(menu).toHaveText('Задачи');
+  const box=await menu.boundingBox();
+  expect(box!.y).toBeGreaterThanOrEqual(59);
+  expect(box!.height).toBeGreaterThanOrEqual(44);
+  await menu.click();
+  await expect(menu).toHaveAttribute('aria-expanded','true');
+  await page.getByRole('button',{name:'HD',exact:true}).click();
+  await expect(page.locator('.header-title strong')).toHaveText('HD');
+  await expect(menu).toHaveAttribute('aria-expanded','false');
+  await menu.click();
+  await page.getByRole('button',{name:'Launcher',exact:true}).click();
+  await expect(page.locator('.header-title strong')).toHaveText('Launcher');
+  await page.setViewportSize({width:320,height:568});
+  await menu.click();
+  const settings=page.locator('details').filter({has:page.locator('summary').filter({hasText:'Уведомления:'})});
+  await settings.locator('summary').click();
+  await settings.scrollIntoViewIfNeeded();
+  await expect(settings).toBeInViewport();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
+});
+
+test('phone notification control reports subscription after an explicit permission tap',async({page})=>{
+  await page.setViewportSize({width:390,height:844});
+  await page.addInitScript(()=>{
+    Object.defineProperty(navigator,'standalone',{value:true});
+    let subscription:any=null;
+    const registration={pushManager:{getSubscription:async()=>subscription,subscribe:async()=>{
+      subscription={toJSON:()=>({endpoint:'https://web.push.apple.com/test',keys:{}}),unsubscribe:async()=>{subscription=null;return true;}};return subscription;
+    }}};
+    Object.defineProperty(navigator,'serviceWorker',{value:{register:async()=>registration,ready:Promise.resolve(registration),getRegistration:async()=>registration}});
+    Object.defineProperty(window,'PushManager',{value:class{}});
+    Object.defineProperty(window,'Notification',{value:{permission:'default',requestPermission:async()=>{
+      (window as any).permissionFromTap=navigator.userActivation.isActive;return 'granted';
+    }}});
+  });
+  await fixture(page);
+  const subscriptions:any[]=[];
+  await page.route('**/web/push/subscribe',route=>{subscriptions.push(route.request().postDataJSON());return route.fulfill({json:{ok:true}});});
+  await page.getByRole('button',{name:'Открыть треды'}).click();
+  await page.getByText('Уведомления: выключены',{exact:true}).click();
+  await page.getByRole('button',{name:'Включить уведомления',exact:true}).click();
+  await expect(page.getByText('Уведомления: включены',{exact:true})).toBeVisible();
+  expect(subscriptions).toHaveLength(1);
+  expect(await page.evaluate(()=>(window as any).permissionFromTap)).toBe(true);
 });
