@@ -197,3 +197,27 @@ history freshness, queue totals and push device/retry/uncertain counts only.
 Message bodies, file paths, credentials and subscription endpoints are excluded.
 Members are denied by the backend regardless of UI visibility. Collector freshness
 is a recent-poll indicator, not proof that a long-running CLI turn is stalled.
+
+## Consolidated release checkpoint
+
+Release `4c1e68197cc74a9c` includes owner diagnostics, uncertain push delivery
+handling, shared turn-based answer identity and the extracted composer.
+The full suite passed: 183 Python tests and 27 browser tests. The VM release was
+verified over SSH. The request service was restarted under the queue lock with
+no active dispatch, and the history service was restarted to load versioned
+checkpoints. Desktop was not restarted.
+
+## Remaining implementation work
+
+- Autonomous catalog discovery and activity updates beyond the existing explicit
+  catalog snapshot; preserve installation scope and project/task access rules.
+- Separate history and quota scheduling/failure handling, and prevent one missing
+  or unsupported task journal from starving all other history synchronization.
+- Publish correlated in-progress responses while a long CLI request runs, with
+  fresh collector activity and explicit waiting/reconciliation diagnostics.
+- Finish separating queue persistence, download and publication operations from
+  the legacy local entrypoint; remove obsolete startup/documentation paths.
+- Finish frontend navigation/conversation/session boundaries and inspect current
+  runtime behavior after all collector changes.
+- Complete the real member/attachment and iOS push acceptance checks already
+  listed above. These are not replaced by fixture or provider tests.
