@@ -3,7 +3,7 @@ import {DeviceSettings} from '../features/encryption/DeviceSettings';
 /* Workspace shell adapted from LuSeptem/codex-webui AppShell; MIT notice in licenses/. */
 import { useEffect, useState } from 'react';
 import {PairingScreen} from '../features/encryption/PairingScreen';
-import { ChevronDown, ChevronRight, Circle, Folder, LogOut, Menu, MessageSquare, Moon, RefreshCw, Sun, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Circle, Folder, Inbox, LogOut, Menu, MessageSquare, Moon, RefreshCw, ShieldCheck, Sun, X } from 'lucide-react';
 import { DiffViewerDialog } from '../shared/components/diff/DiffViewerDialog';
 import { useThreadHistory } from '../features/chat/History';
 import { useConversationScroll } from '../features/chat/ConversationScroll';
@@ -13,6 +13,7 @@ import type { FileChangeItem } from '../shared/types/api';
 import { useWorkspaceNavigation } from '../features/projects/useWorkspaceNavigation';
 import { useWorkspaceSession } from '../features/auth/useWorkspaceSession';
 
+import { AccessPanel } from '../features/access/AccessPanel';
 import { ProjectPanel } from '../features/projects/ProjectPanel';
 import { Diagnostics } from '../features/diagnostics/Diagnostics';
 import { Composer } from '../features/chat/Composer';
@@ -23,7 +24,7 @@ import { Conversation } from '../features/chat/Conversation';
 export function App({initialPairingFragment=''}:{initialPairingFragment?:string}){
  const [pairingFragment,setPairingFragment]=useState(initialPairingFragment);
  const {state,checking,busy,setBusy,error,setError,resetVersion,config,preparing,prepare,refresh,action,enter,logout,cancelLogin}=useWorkspaceSession();
- const {projectExpanded,setProjectExpanded,selected,section,sidebar,setSidebar,search,setSearch,projects,thread,activeProject,projectThreads,openProject,choose,chooseProject}=useWorkspaceNavigation(state,resetVersion,setError);
+ const {projectExpanded,setProjectExpanded,selected,section,setSection,sidebar,setSidebar,search,setSearch,projects,thread,activeProject,projectThreads,openProject,choose,chooseProject}=useWorkspaceNavigation(state,resetVersion,setError);
  const [diff,setDiff]=useState<FileChangeItem|null>(null);
  const [dark,setDark]=useState(()=>localStorage.getItem('workspace-theme')!=='light');
  useEffect(()=>{document.documentElement.classList.toggle('dark',dark);localStorage.setItem('workspace-theme',dark?'dark':'light');},[dark]);
@@ -35,6 +36,9 @@ export function App({initialPairingFragment=''}:{initialPairingFragment?:string}
  if(pairingFragment)return <PairingScreen account={String(state?.user.id??0)} fragment={pairingFragment} close={()=>window.location.reload()}/>;
  if(!state)return <LoginPage devices={config?.devices} pair={setPairingFragment} checking={checking} ready={Boolean(config)} busy={busy} preparing={preparing} error={error} enter={enter} cancel={cancelLogin} prepare={prepare}/>;
 
+ const owner=state.user.role==='owner';
+ const direct=owner||state.user.requires_approval===false;
+ const waiting=state.messages.filter(m=>m.status==='awaiting_approval');
  if(state.encryption_locked)return <LockedDevice workspace={state.encryption!.workspace} pair={setPairingFragment} logout={logout}/>;
  const online=state.collector_seen!==null&&Date.now()/1000-state.collector_seen<600;
  return <div className="workspace flex w-screen overflow-hidden bg-background text-foreground">
@@ -42,22 +46,23 @@ export function App({initialPairingFragment=''}:{initialPairingFragment?:string}
   <aside id="workspace-navigation" aria-label="Проекты и задачи" className={'workspace-sidebar '+(sidebar?'is-open':'')}><div className="sidebar-heading"><MessageSquare size={19}/><strong>Codex Workspace</strong><button className="icon-button mobile-only" onClick={()=>setSidebar(false)} aria-label="Закрыть меню"><X size={18}/></button></div>
    <div className="project-switcher"><Folder size={17}/><select aria-label="Проект" value={activeProject?.id||''} onChange={e=>chooseProject(e.target.value)}>{projects.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select><button className="icon-button" onClick={()=>setProjectExpanded(value=>!value)} aria-label={projectExpanded?'Свернуть задачи проекта':'Развернуть задачи проекта'} aria-expanded={projectExpanded} aria-controls="sidebar-project-tasks">{projectExpanded?<ChevronDown size={17}/>:<ChevronRight size={17}/>}</button></div>
    <div id="sidebar-project-tasks" className="sidebar-project-tasks" hidden={!projectExpanded}><input className="thread-search" placeholder="Найти тред…" aria-label="Найти тред" value={search} onChange={e=>setSearch(e.target.value)}/>
-   <nav className="thread-list">{projectThreads.filter(t=>t.title.toLowerCase().includes(search.toLowerCase())).map(t=><button key={t.id} className={'thread-row '+(selected===t.id&&section==='threads'?'selected':'')} onClick={()=>choose(t.id)}><MessageSquare size={15}/><span>{t.title}</span>{t.status==='active'&&<span className="activity-dot" title="Активная задача"/>}</button>)}{projectThreads.length===0&&<p className="small muted empty-threads">Список тредов появится после синхронизации с Codex.</p>}</nav></div>
+   <nav className="thread-list">{projectThreads.filter(t=>t.title.toLowerCase().includes(search.toLowerCase())).map(t=><button key={t.id} className={'thread-row '+(selected===t.id&&section==='threads'?'selected':'')} onClick={()=>choose(t.id)}><MessageSquare size={15}/><span>{t.title}</span>{t.status==='active'&&<span className="activity-dot" title="Активная задача"/>}</button>)}{projectThreads.length===0&&<p className="small muted empty-threads">{owner?'Список тредов появится после синхронизации с Codex.':'Владелец ещё не выдал доступ к тредам.'}</p>}</nav></div>
+   {owner&&<div className="owner-navigation"><button className={'thread-row '+(section==='approvals'?'selected':'')} onClick={()=>{setSection('approvals');setSidebar(false);}}><Inbox size={16}/><span>На одобрение</span>{waiting.length>0&&<span className="count">{waiting.length}</span>}</button><button className={'thread-row '+(section==='access'?'selected':'')} onClick={()=>{setSection('access');setSidebar(false);}}><ShieldCheck size={16}/><span>Доступ к тредам</span></button></div>}
    {<div className="weekly-quota small" aria-label="Недельная квота Codex">{state.weekly_quota?<><strong>Неделя: {Date.now()/1000>=state.weekly_quota.resets_at?'ожидаем обновления':`${Math.round(100-state.weekly_quota.used_percent)}% осталось`}</strong><progress max={100} value={Math.max(0,100-state.weekly_quota.used_percent)} aria-label="Остаток недельной квоты"/><span className="muted">Сброс: {new Date(state.weekly_quota.resets_at*1000).toLocaleString('ru-RU')}</span><span className="muted">Данные на {new Date(state.weekly_quota.observed_at*1000).toLocaleString('ru-RU')}</span></>:<span className="muted">Недельная квота пока неизвестна</span>}</div>}
-   {state.encryption&&<DeviceSettings/>}
+   {state.encryption&&owner&&<DeviceSettings/>}
    <PushSettings/>
-   <Diagnostics/>
-   <div className="sidebar-bottom"><span className="small muted">Личное пространство</span><button className="icon-button" onClick={()=>setDark(!dark)} aria-label={dark?'Светлая тема':'Тёмная тема'}>{dark?<Sun size={17}/>:<Moon size={17}/>}</button><button className="icon-button" onClick={logout} disabled={busy} aria-label="Выйти"><LogOut size={17}/></button></div>
+   {owner&&<Diagnostics/>}
+   <div className="sidebar-bottom"><span className="small muted">{owner?'Владелец':'Участник'}</span><button className="icon-button" onClick={()=>setDark(!dark)} aria-label={dark?'Светлая тема':'Тёмная тема'}>{dark?<Sun size={17}/>:<Moon size={17}/>}</button><button className="icon-button" onClick={logout} disabled={busy} aria-label="Выйти"><LogOut size={17}/></button></div>
   </aside>
-  <div className="main-column"><header className="workspace-header"><button className="icon-button mobile-only task-menu-button" onClick={()=>setSidebar(true)} aria-label="Открыть треды" aria-expanded={sidebar} aria-controls="workspace-navigation"><Menu size={20}/><span>Задачи</span></button><div className="header-title"><button className="project-link muted" onClick={openProject} aria-label={'Открыть проект '+(activeProject?.title||'')}>{activeProject?.title||'Проекты'}</button><ChevronRight size={14}/><strong>{section==='project'?'Задачи':thread?.title||'Треды'}</strong></div><span className={'connection '+(online?'online':'')}><Circle size={8} fill="currentColor"/>{online?'Codex на связи':'Ожидаем Codex'}</span><button className="icon-button" onClick={()=>void refresh()} aria-label="Обновить"><RefreshCw size={16}/></button></header>
+  <div className="main-column"><header className="workspace-header"><button className="icon-button mobile-only task-menu-button" onClick={()=>setSidebar(true)} aria-label="Открыть треды" aria-expanded={sidebar} aria-controls="workspace-navigation"><Menu size={20}/><span>Задачи</span></button><div className="header-title"><button className="project-link muted" onClick={openProject} aria-label={'Открыть проект '+(activeProject?.title||'')}>{activeProject?.title||'Проекты'}</button><ChevronRight size={14}/><strong>{section==='project'?'Задачи':section==='approvals'?'Одобрения':section==='access'?'Доступ':thread?.title||'Треды'}</strong></div><span className={'connection '+(online?'online':'')}><Circle size={8} fill="currentColor"/>{online?'Codex на связи':'Ожидаем Codex'}</span><button className="icon-button" onClick={()=>void refresh()} aria-label="Обновить"><RefreshCw size={16}/></button></header>
    {error&&<div className="error-banner" role="alert">{error}<button onClick={()=>setError('')} aria-label="Закрыть ошибку"><X size={16}/></button></div>}
    <main key={section} className="workspace-main" ref={scroll.ref} onScroll={scroll.onScroll} style={{overflowAnchor:'none'}}>
-    {section==='project'?<ProjectPanel activeProject={activeProject} projectThreads={projectThreads} search={search} setSearch={setSearch} choose={choose}/>:
+    {section==='project'?<ProjectPanel activeProject={activeProject} projectThreads={projectThreads} search={search} setSearch={setSearch} choose={choose} owner={owner}/>:section==='access'?<AccessPanel state={state} projects={projects} busy={busy} action={action}/>:
      <Conversation state={state} section={section} selected={selected} thread={thread} history={history} busy={busy} online={online} action={action} setDiff={setDiff}/>}
    </main>
    {section==='threads'&&sending===selected&&<div className="request-activity sending-activity" role="status">Отправляю…</div>}
    {section==='threads'&&thread?.read_only&&<p className="composer-note">Эта задача доступна только для чтения.</p>}
-   {section==='threads'&&thread&&!thread.read_only&&<Composer composer={composer} selected={selected} thread={thread} busy={busy}/>}
+   {section==='threads'&&thread&&!thread.read_only&&<Composer composer={composer} selected={selected} thread={thread} busy={busy} direct={direct}/>}
   </div>{diff&&<DiffViewerDialog item={diff} onClose={()=>setDiff(null)}/>}<Toaster/>
  </div>;
 }

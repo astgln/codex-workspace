@@ -24,7 +24,7 @@ export function Diagnostics(){
     {status&&<>
       <p>{status.collector_recent?'Обработчик на связи':'Связь с обработчиком давно не обновлялась'}</p>
       <p className="muted">Связь: {date(status.collector_seen)}</p>
-      <p>В очереди: {status.queue.queued}<br/>Готовых ответов: {status.completed}</p>
+      <p>На одобрение: {status.queue.awaiting_approval??0} · В очереди: {status.queue.approved??status.queue.queued??0}<br/>Готовых ответов: {status.completed}</p>
       {status.worker&&<div>
         <p className="muted">Последний проход: {date(status.worker.observed_at)}. Во время выполнения запроса эти данные могут не обновляться.</p>
         <p>Занятых задач: {status.worker.waiting.desktop_writer_lock}<br/>Нет сохранённых настроек: {status.worker.waiting.task_settings_unavailable}<br/>Требуют сверки: {status.worker.unresolved}</p>

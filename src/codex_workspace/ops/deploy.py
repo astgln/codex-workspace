@@ -23,15 +23,20 @@ class Deploy:
         STATE.mkdir(mode=0o700, exist_ok=True)
         self.path = STATE / 'deployment.json'
         self.state = json.loads(self.path.read_text()) if self.path.exists() else {}
-        if self.state.get('folder', args.folder) != args.folder:
+        if self.state and self.state['folder'] != args.folder:
             raise RuntimeError('Deployment belongs to another folder')
-        if not re.fullmatch(r'[a-z0-9_]{5,32}', args.owner):
-            raise RuntimeError('Invalid account username')
-        if self.state.get('settings', {}).get('owner', args.owner) != args.owner:
-            raise RuntimeError('Account change requires explicit migration')
+        settings = {'thread': args.thread, 'owner': args.owner, 'allowed': sorted(args.allowed)}
+        if args.owner not in args.allowed or not all(re.fullmatch(r'[a-z0-9_]{5,32}', x) for x in args.allowed):
+            raise RuntimeError('Invalid owner or allowed usernames')
+        if self.state.get('settings', settings) != settings:
+            raise RuntimeError('Mailbox settings changed; explicit migration required')
+        self.state['settings'] = settings
         if self.state.get('project', args.project) != args.project:
-            raise RuntimeError('Catalog scope changed; explicit migration required')
-        self.state.update(settings={'owner': args.owner}, project=args.project, folder=args.folder)
+            raise RuntimeError('Project changed; explicit migration required')
+        self.state['project'] = args.project
+        self.state['folder'] = args.folder
+        self.iam = None
+
 
     def checkpoint(self, key, value):
         self.state[key] = value

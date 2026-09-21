@@ -4,7 +4,7 @@ self.addEventListener('activate', event => event.waitUntil(self.clients.claim())
 self.addEventListener('push', event => {
   let data = {};
   try { data = event.data.json(); } catch {}
-  const url = typeof data.url === 'string' && /^\/#(?:thread=[a-zA-Z0-9-]+)$/.test(data.url) ? data.url : '/';
+  const url = typeof data.url === 'string' && /^\/#(?:approvals|thread=[a-zA-Z0-9-]+)$/.test(data.url) ? data.url : '/';
   const title = typeof data.title === 'string' && data.title.trim() ? Array.from(data.title).slice(0,120).join('') : 'Codex Workspace';
   event.waitUntil(self.registration.showNotification(title, {
     body: typeof data.body === 'string' && data.body.trim() ? Array.from(data.body).slice(0,520).join('') : 'Готов новый ответ',

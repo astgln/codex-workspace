@@ -20,7 +20,7 @@ from codex_workspace.agent.runtime_support import NoRedirect
 
 def deployment():
     state=json.loads((STATE/'deployment.json').read_text())
-    return Deploy(argparse.Namespace(folder=state['folder'],
+    return Deploy(argparse.Namespace(folder=state['folder'],thread=state['settings']['thread'],allowed=state['settings']['allowed'],
         owner=state['settings']['owner'],project=state['project']))
 
 
@@ -64,7 +64,7 @@ def publish(ssh_interface=None, use_pinned_host_key=False):
     if ROOT is None:raise RuntimeError('Set CODEX_WORKSPACE_SOURCE to the release checkout')
     d=deployment();s=d.state
     branch=subprocess.check_output(['git','branch','--show-current'],cwd=ROOT,text=True).strip()
-    expected=s.get('release_branch','main')
+    expected=s.get('release_branch','experimental/multi-user')
     if branch!=expected:
         raise RuntimeError('Deployment branch mismatch; use the configured checkout')
     if subprocess.check_output(['git','status','--porcelain','--untracked-files=no'],cwd=ROOT,text=True).strip():

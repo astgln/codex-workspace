@@ -27,15 +27,27 @@ class PushTests(unittest.TestCase):
   with self.assertRaises(workspace.Forbidden):self.subscribe(2)
   with self.assertRaises(workspace.Forbidden):push.handle(self.store,99,'owner','config',{})
   self.assertEqual(len(base64.urlsafe_b64decode(push.public_key(self.store)+'=')),65)
- def test_changed_identity_old_answers_and_dead_subscription(self):
+ def test_approval_only_owner_and_durable_dedup(self):
   self.subscribe();now=int(time.time())
+  self.store.mutate(lambda s:s['items'].update({'-1':{'id':-1,'channel':'web','thread':'task','status':'awaiting_approval','expires':now+100,'created':now}}))
+  with patch('codex_workspace.relay.push.send',return_value=201) as send:
+   push.tick(self.store,'owner');push.tick(self.store,'owner');self.assertEqual(send.call_count,1)
+   self.assertNotIn('task',send.call_args.args[2]['body'])
+ def test_member_receives_answer_but_not_approval(self):
+  self.subscribe(2);now=int(time.time())
+  self.store.mutate(lambda s:s['items'].update({'-1':{'id':-1,'channel':'web','thread':'task','status':'awaiting_approval','expires':now+100,'created':now}}))
+  with push.database(self.store) as db:db.execute('INSERT INTO push_answers VALUES(?,?,?)',('answer','task',now))
+  with patch('codex_workspace.relay.push.send',return_value=201) as send:
+   push.tick(self.store,'owner');self.assertEqual(send.call_count,1);self.assertEqual(send.call_args.args[2]['body'],'Готов новый ответ')
+ def test_revoked_grants_old_answers_and_dead_subscription(self):
+  self.subscribe(2);now=int(time.time())
   with push.database(self.store) as db:
    db.execute('INSERT INTO push_answers VALUES(?,?,?)',('old','task',now-20))
    db.execute('INSERT INTO push_answers VALUES(?,?,?)',('new','task',now))
-  self.store.mutate(lambda s:s['bindings'].update(owner=99))
+  self.store.mutate(lambda s:s['thread_grants'].update({'2':[]}))
   with patch('codex_workspace.relay.push.send',return_value=410) as send:
    push.tick(self.store,'owner');send.assert_not_called()
-   self.store.mutate(lambda s:s['bindings'].update(owner=1))
+   self.store.mutate(lambda s:s['thread_grants'].update({'2':['task']}))
    push.tick(self.store,'owner');self.assertEqual(send.call_count,1)
   with push.database(self.store) as db:self.assertEqual(db.execute('SELECT count(*) FROM push_subscriptions').fetchone()[0],0)
  def test_retry_is_delayed(self):
@@ -76,8 +88,20 @@ class PushTests(unittest.TestCase):
   with push.database(self.store) as db:db.execute('UPDATE push_deliveries SET next_attempt=?',(now-1,))
   with patch('codex_workspace.relay.push.send') as send:
    push.tick(self.store,'owner');send.assert_not_called()
- def test_history_preview_uses_exact_answer_not_latest_message(self):
+ def test_approval_preview_includes_task_and_request(self):
   self.subscribe();now=int(time.time())
+  def seed(s):
+   s['catalog']['task']['title']='Launcher'
+   s['items']['-1']={'id':-1,'channel':'web','thread':'task','text':'Проверь подключение','status':'awaiting_approval','expires':now+100,'created':now}
+  self.store.mutate(seed)
+  with patch('codex_workspace.relay.push.send',return_value=201) as send:
+   push.tick(self.store,'owner')
+   payload=send.call_args.args[2]
+   self.assertEqual(payload['title'],'Launcher')
+   self.assertEqual(payload['body'],'На одобрение: Проверь подключение')
+   self.assertEqual(payload['url'],'/#approvals')
+ def test_history_preview_uses_exact_answer_not_latest_message(self):
+  self.subscribe(2);now=int(time.time())
   from codex_workspace.relay import history
   history.handle(self.store,None,'owner','publish',{'thread':'task','messages':[
    {'id':'final','position':'1','role':'assistant','text':'Точный ответ','created':now,'phase':'final_answer','turn_id':'turn-1'},

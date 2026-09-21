@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { WorkspaceState } from '../../shared/api/index';
 
-export type Section = 'threads' | 'project';
+export type Section = 'threads' | 'approvals' | 'access' | 'project';
 
 export function useWorkspaceNavigation(state: WorkspaceState | null, resetVersion: number, setError: (value: string) => void) {
   const [projectId, setProjectId] = useState('');
@@ -47,16 +47,19 @@ export function useWorkspaceNavigation(state: WorkspaceState | null, resetVersio
       const next = orderedThreads[0];
       setSelected(next?.id || ''); setProjectId(next?.project_id || '');
     }
+    if (state.user.role !== 'owner' && (section === 'access' || section === 'approvals')) setSection('threads');
   }, [state, selected, section]);
   useEffect(() => {
     const follow = () => {
       const current = latest.current;
       if (!current) return;
       const hash = location.hash;
-      if (hash.startsWith('#thread=')) choose(hash.slice(8));
+      if (hash === '#approvals' && current.user.role === 'owner') {
+        setSection('approvals'); setSidebar(false);
+      } else if (hash.startsWith('#thread=')) choose(hash.slice(8));
     };
     // Rebind only at authentication boundaries. Every event reads the latest
-    // current catalog, but polling must not reapply an old notification link.
+    // granted catalog, but polling must not reapply an old notification link.
     follow();
     window.addEventListener('hashchange', follow);
     return () => window.removeEventListener('hashchange', follow);

@@ -10,9 +10,9 @@ class DiagnosticsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             store=Store(directory)
             store.mutate(lambda state:state.update(bindings={'owner':1,'member':2},
-                items={'-1':{'channel':'web','status':'queued','text':'secret-message','lease':'secret-lease'}}))
+                items={'-1':{'channel':'web','status':'approved','text':'secret-message','lease':'secret-lease'}}))
             result=inspect(store,1,'owner')
-            self.assertEqual(result['queue']['queued'],1)
+            self.assertEqual(result['queue']['approved'],1)
             self.assertNotIn('secret',str(result))
             self.assertFalse(result['collector_recent'])
             for uid in (2,3):
