@@ -361,3 +361,22 @@ test('activity text shimmers and respects reduced motion',async({page})=>{
  await expect(text).toHaveCSS('animation-name','none');
  await expect(text).toBeVisible();
 });
+
+test('failed submission keeps draft and idempotency key on retry',async({page})=>{
+ const f=await fixture(page);
+ const attempts:any[]=[];
+ await page.route('**/web/messages',route=>{
+  attempts.push(route.request().postDataJSON());
+  if(attempts.length===1)return route.fulfill({status:503,json:{error:'unavailable'}});
+  return route.fallback();
+ });
+ await page.getByRole('textbox',{name:'Сообщение',exact:true}).fill('Retry safely');
+ await page.getByRole('button',{name:'Отправить',exact:true}).click();
+ await expect(page.getByRole('alert')).toBeVisible();
+ await expect(page.getByRole('textbox',{name:'Сообщение',exact:true})).toHaveValue('Retry safely');
+ await page.getByRole('button',{name:'Отправить',exact:true}).click();
+ await expect(page.getByText('В очереди Codex…',{exact:true})).toBeVisible();
+ expect(attempts).toHaveLength(2);
+ expect(attempts[0].request_id).toBe(attempts[1].request_id);
+ expect(f.sent).toHaveLength(1);
+});

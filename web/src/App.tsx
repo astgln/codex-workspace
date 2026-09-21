@@ -1,6 +1,6 @@
 /* Workspace shell adapted from LuSeptem/codex-webui AppShell; MIT notice in licenses/. */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowUp, Check, ChevronDown, ChevronRight, Circle, Folder, Inbox, LogOut, Menu, MessageSquare, Moon, Paperclip, Download, RefreshCw, ShieldCheck, Sun, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, Circle, Folder, Inbox, LogOut, Menu, MessageSquare, Moon, Download, RefreshCw, ShieldCheck, Sun, X } from 'lucide-react';
 import { Markdown } from './components/events/Markdown';
 import { DiffViewerDialog } from './components/diff/DiffViewerDialog';
 import { useThreadHistory } from './History';
@@ -8,13 +8,15 @@ import { useConversationScroll } from './ConversationScroll';
 import {PushSettings,disablePush} from './PushSettings';
 import { Toaster } from './components/ui/Toaster';
 import type { FileChangeItem } from './types/api';
-import { ApiError, decide, fetchState, login, prepareLogin, restoreSession, sendMessage, signOut, uploadFile, downloadFile } from './api';
-import type { Attachment, WorkspaceState } from './api';
+import { ApiError, decide, fetchState, login, prepareLogin, restoreSession, signOut, downloadFile } from './api';
+import type { WorkspaceState } from './api';
 const statusLabels:Record<string,string>={awaiting_approval:'Ожидает одобрения',approved:'Ожидает Codex',delivered:'Передано в Codex',rejected:'Отклонено',expired:'Истёк срок одобрения',target_unavailable:'Тред недоступен',superseded:'Заменено новой версией',running:'Codex работает',completed:'Ответ готов',failed:'Ошибка обработки',needs_input:'Нужен ответ'};
 
 import { AccessPanel } from './workspace/AccessPanel';
 import { ProjectPanel } from './workspace/ProjectPanel';
 import { PublicEvent } from './workspace/PublicEvent';
+import { Composer } from './workspace/Composer';
+import { useComposer } from './workspace/useComposer';
 import { RequestActivity } from './workspace/RequestActivity';
 
 export function App(){
@@ -25,14 +27,9 @@ export function App(){
  const [sidebar,setSidebar]=useState(false),[error,setError]=useState(''),[busy,setBusy]=useState(false),[search,setSearch]=useState('');
  const [config,setConfig]=useState<Awaited<ReturnType<typeof prepareLogin>>|null>(null),[diff,setDiff]=useState<FileChangeItem|null>(null);
  const [dark,setDark]=useState(()=>localStorage.getItem('workspace-theme')!=='light');
- const [drafts,setDrafts]=useState<Record<string,string>>({});
- const [attachments,setAttachments]=useState<Record<string,Attachment[]>>({}),[uploading,setUploading]=useState('');
- const [sending,setSending]=useState('');
  const loginAttempt=useRef<AbortController|null>(null);
  const preparation=useRef(0);
  const [preparing,setPreparing]=useState(false);
- const fileInput=useRef<HTMLInputElement>(null);
- const submission=useRef<{thread:string;text:string;id:string;files:string[]}|null>(null);
  useEffect(()=>{document.documentElement.classList.toggle('dark',dark);localStorage.setItem('workspace-theme',dark?'dark':'light');},[dark]);
  const prepare=useCallback(()=>{const current=++preparation.current;setError('');setConfig(null);setPreparing(true);prepareLogin().then(value=>{if(current===preparation.current)setConfig(value);}).catch(e=>{if(current===preparation.current)setError(e.message);}).finally(()=>{if(current===preparation.current)setPreparing(false);});},[]);
  useEffect(()=>{let active=true;restoreSession().then(next=>{if(active){setState(next);setSelected(next.threads[0]?.id||'');}}).catch(()=>{}).finally(()=>{if(active)setChecking(false);});return()=>{active=false;};},[]);
@@ -45,6 +42,8 @@ export function App(){
   follow();window.addEventListener('hashchange',follow);return()=>window.removeEventListener('hashchange',follow);
  },[Boolean(state)]);
  const action=async(fn:()=>Promise<unknown>)=>{setBusy(true);setError('');try{await fn();await refresh();}catch(e){setError(e instanceof Error?e.message:'Не удалось выполнить действие.');}finally{setBusy(false);}};
+ const composer=useComposer({selected,busy,setBusy,setError,action});
+ const {setDrafts,setAttachments,sending,submission}=composer;
  const history=useThreadHistory(selected,Boolean(state)&&section==='threads');
  const scroll=useConversationScroll(state&&section==='threads'?`${state.user.id}:${selected}`:'',Boolean(history.page),history.page?.before||null,before=>void history.refresh(before));
  const enter=()=>{if(!config)return;const attempt=new AbortController();loginAttempt.current=attempt;setBusy(true);setError('');login(config,attempt.signal).then(refresh).catch(e=>{setError(e.message);setConfig(null);}).finally(()=>{setBusy(false);loginAttempt.current=null;});};
@@ -63,8 +62,6 @@ export function App(){
  const online=state.collector_seen!==null&&Date.now()/1000-state.collector_seen<600;
  const openProject=()=>{setSection('project');setSidebar(false);setSearch('');setError('');};
  const choose=(id:string)=>{setProjectId(state.threads.find(t=>t.id===id)?.project_id||'');setSelected(id);setSection('threads');setSidebar(false);setError('');};
- const attach=async(files:FileList|null)=>{if(!files||!selected)return;const target=selected;const pending=Array.from(files);if((attachments[target]?.length||0)+pending.length>4){setError('Можно прикрепить до четырёх файлов.');return;}setBusy(true);setError('');try{for(const file of pending){setUploading(file.name);const result=await uploadFile(target,file,p=>setUploading(`${file.name} · ${p}%`));setAttachments(a=>({...a,[target]:[...(a[target]||[]),result]}));}}catch(e){setError(e instanceof Error?e.message:'Не удалось загрузить файл.');}finally{setUploading('');setBusy(false);if(fileInput.current)fileInput.current.value='';}};
- const send=async()=>{const text=(drafts[selected]||'').trim();const files=(attachments[selected]||[]).map(f=>f.id);if(busy||!selected||(!text&&!files.length))return;const target=selected;if(!submission.current||submission.current.thread!==target||submission.current.text!==text||JSON.stringify(submission.current.files)!==JSON.stringify(files))submission.current={thread:target,text,id:crypto.randomUUID(),files};const current=submission.current;setSending(target);try{await action(async()=>{await sendMessage(current.thread,current.text,current.id,current.files);setDrafts(d=>({...d,[target]:''}));setAttachments(a=>({...a,[target]:[]}));submission.current=null;});}finally{setSending('');}};
  return <div className="workspace flex w-screen overflow-hidden bg-background text-foreground">
   {sidebar&&<button className="sidebar-shade" aria-label="Закрыть меню" onClick={()=>setSidebar(false)}/>}
   <aside className={'workspace-sidebar '+(sidebar?'is-open':'')}><div className="sidebar-heading"><MessageSquare size={19}/><strong>Codex Workspace</strong><button className="icon-button mobile-only" onClick={()=>setSidebar(false)} aria-label="Закрыть меню"><X size={18}/></button></div>
@@ -91,7 +88,7 @@ export function App(){
    </main>
    {section==='threads'&&sending===selected&&<div className="request-activity sending-activity" role="status">Отправляю…</div>}
    {section==='threads'&&thread?.read_only&&<p className="composer-note">Эта задача доступна только для чтения.</p>}
-   {section==='threads'&&thread&&!thread.read_only&&<div className="composer-wrap"><div className="composer content-width">{attachments[selected]?.map(file=><div className="attachment-card" key={file.id}><Paperclip size={14}/><span>{file.name}</span><button className="icon-button" aria-label={"Убрать "+file.name} disabled={busy} onClick={()=>setAttachments(a=>({...a,[selected]:a[selected].filter(f=>f.id!==file.id)}))}><X size={14}/></button></div>)}{uploading&&<p className="small muted" role="status">Загрузка: {uploading}</p>}<textarea disabled={busy} aria-label="Сообщение" placeholder="Сообщение в выбранный тред…" value={drafts[selected]||''} maxLength={16000} onChange={e=>setDrafts(d=>({...d,[selected]:e.target.value}))} onKeyDown={e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();void send();}}}/><div className="composer-bottom"><input ref={fileInput} type="file" multiple hidden onChange={e=>void attach(e.target.files)}/><button className="icon-button" aria-label="Прикрепить файлы" disabled={busy||(attachments[selected]?.length||0)>=4} onClick={()=>fileInput.current?.click()}><Paperclip size={17}/></button><span className="small muted"><ShieldCheck size={13}/>{direct?'Сразу в Codex':'Через одобрение владельца'}</span><button className="send-button" disabled={busy||(!drafts[selected]?.trim()&&!attachments[selected]?.length)} onClick={()=>void send()} aria-label="Отправить"><ArrowUp size={19}/></button></div></div><p className="composer-note">{thread.title} · Ctrl / ⌘ + Enter — отправить</p></div>}
+   {section==='threads'&&thread&&!thread.read_only&&<Composer composer={composer} selected={selected} thread={thread} busy={busy} direct={direct}/>}
   </div>{diff&&<DiffViewerDialog item={diff} onClose={()=>setDiff(null)}/>}<Toaster/>
  </div>;
 }

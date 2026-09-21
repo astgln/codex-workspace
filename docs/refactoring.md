@@ -180,3 +180,11 @@ provider response. Explicit retryable provider responses use bounded backoff;
 terminal responses use done=1. This avoids duplicate retries at the cost of a
 possibly missed notification on uncertain delivery; website history remains the
 source of truth. Real device delivery still requires the iPhone acceptance test.
+
+## Composer boundary
+
+`workspace/useComposer.ts` owns per-task drafts and files, upload progress,
+submission state and retry identity. `workspace/Composer.tsx` renders the form.
+Targets are captured before asynchronous work, so changing the selected task
+does not redirect a file upload or submitted message. A failed unchanged request
+retains its draft and idempotency key; browser tests cover retry and navigation.
