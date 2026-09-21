@@ -4,6 +4,7 @@ import re
 import time
 from cloud import domain, workspace
 from server.migrations import read_state
+from server import push_preview
 
 
 def handle(store, uid, owner, action, body, collector=False):
@@ -11,6 +12,7 @@ def handle(store, uid, owner, action, body, collector=False):
     db=store.connect()
     try:
         db.execute('BEGIN IMMEDIATE')
+        push_preview.initialize(db)
         db.execute('CREATE TABLE IF NOT EXISTS push_answers(id TEXT PRIMARY KEY,thread TEXT,created INTEGER)')
         db.execute('CREATE TABLE IF NOT EXISTS history_threads(thread TEXT PRIMARY KEY,cursor TEXT,synced INTEGER NOT NULL DEFAULT 0,requested INTEGER NOT NULL DEFAULT 0,more INTEGER NOT NULL DEFAULT 1)')
         db.execute('CREATE TABLE IF NOT EXISTS history_messages(thread TEXT NOT NULL,id TEXT NOT NULL,position TEXT NOT NULL,role TEXT NOT NULL,text TEXT NOT NULL,created INTEGER NOT NULL,PRIMARY KEY(thread,id))')
@@ -49,7 +51,9 @@ def handle(store, uid, owner, action, body, collector=False):
                     if turn is not None and (not isinstance(turn,str) or not re.fullmatch(r'[a-zA-Z0-9-]{1,80}',turn)):
                         raise domain.Rejected('Invalid history turn')
                     if role=='assistant' and message.get('phase')=='final_answer' and now-300<=created<=now+60:
-                        db.execute('INSERT OR IGNORE INTO push_answers VALUES(?,?,?)',(('answer:'+thread+':'+turn if turn else 'history:'+thread+':'+ident),thread,created))
+                        event = 'answer:'+thread+':'+turn if turn else 'history:'+thread+':'+ident
+                        db.execute('INSERT OR IGNORE INTO push_answers VALUES(?,?,?)',(event,thread,created))
+                        push_preview.record(db,event,text)
                     db.execute('INSERT INTO history_messages VALUES(?,?,?,?,?,?) ON CONFLICT(thread,id) DO UPDATE SET position=excluded.position,role=excluded.role,text=excluded.text,created=excluded.created',(thread,ident,position,role,text,created))
                 if body.get('finish'):
                     cursor=body.get('cursor')

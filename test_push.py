@@ -88,3 +88,40 @@ class PushTests(unittest.TestCase):
   with push.database(self.store) as db:db.execute('UPDATE push_deliveries SET next_attempt=?',(now-1,))
   with patch('server.push.send') as send:
    push.tick(self.store,'owner');send.assert_not_called()
+ def test_approval_preview_includes_task_and_request(self):
+  self.subscribe();now=int(time.time())
+  def seed(s):
+   s['catalog']['task']['title']='Launcher'
+   s['items']['-1']={'id':-1,'channel':'web','thread':'task','text':'Проверь подключение','status':'awaiting_approval','expires':now+100,'created':now}
+  self.store.mutate(seed)
+  with patch('server.push.send',return_value=201) as send:
+   push.tick(self.store,'owner')
+   payload=send.call_args.args[2]
+   self.assertEqual(payload['title'],'Launcher')
+   self.assertEqual(payload['body'],'На одобрение: Проверь подключение')
+   self.assertEqual(payload['url'],'/#approvals')
+ def test_history_preview_uses_exact_answer_not_latest_message(self):
+  self.subscribe(2);now=int(time.time())
+  from server import history
+  history.handle(self.store,None,'owner','publish',{'thread':'task','messages':[
+   {'id':'final','position':'1','role':'assistant','text':'Точный ответ','created':now,'phase':'final_answer','turn_id':'turn-1'},
+   {'id':'later','position':'2','role':'assistant','text':'Другое рассуждение','created':now,'phase':'commentary','turn_id':'turn-2'}]},collector=True)
+  with patch('server.push.send',return_value=201) as send:
+   push.tick(self.store,'owner')
+   self.assertEqual(send.call_args.args[2]['body'],'Точный ответ')
+ def test_request_preview_and_unicode_payload_budget(self):
+  self.subscribe();now=int(time.time())
+  def seed(s):
+   s['catalog']['task']['title']='😀'*200
+   s['items']['-1']={'id':-1,'channel':'web','thread':'task','status':'delivered','result_status':'completed','result_turn_id':'turn','result_updated':now,'events':[{'type':'agent_message','text':'earlier'},{'type':'agent_message','text':'😀'*4000}]}
+  self.store.mutate(seed)
+  with patch('server.push.send',return_value=201) as send:
+   push.tick(self.store,'owner')
+   payload=send.call_args.args[2]
+   self.assertTrue(payload['body'].endswith('…'))
+   self.assertEqual(len(payload['body']),500)
+   self.assertLess(len(json.dumps(payload,ensure_ascii=False).encode()),3500)
+ def test_preview_redacts_known_credentials(self):
+  from server.push_preview import preview
+  self.assertNotIn('sk-'+'a'*30,preview('Ответ sk-'+'a'*30))
+  self.assertEqual(preview('API_KEY=private\nГотово'),'API_KEY=[hidden] Готово')

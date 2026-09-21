@@ -131,8 +131,7 @@ resume` с исходными правами задачи; desktop сохран�
 The site includes a Web App Manifest, home-screen icons and a root service
 worker. It deliberately does not cache conversations, attachments or API data.
 On iOS/iPadOS 16.4+, open in Safari, choose Share → Add to Home Screen, launch
-that installed app, sign in and enable notifications under “Приложение и
-уведомления”. Permission is requested only from that button's click. The same
+that installed app, sign in and enable notifications under “Уведомления”. Permission is requested only from that button's click. The same
 panel can disable the current device; signing out removes its subscription.
 
 The VM generates its VAPID private key once in the protected service data
@@ -146,7 +145,12 @@ final answers arrive via the local history collector; request results can also
 arrive via the existing result API. Old history is not replayed as notifications.
 Push endpoints and encryption keys stay in the private SQLite database. Only
 Apple, Google and Mozilla push service endpoints are accepted; redirects are
-not followed. Notifications contain generic text, not conversation contents.
+not followed. At the owner’s request, notifications show the task name and up to
+500 characters of the request or completed answer. Previews use only the exact
+answer event, remain encrypted in Web Push, and redact recognizable credential
+patterns. A short-lived `push_previews` operational table links history answer
+events to bounded previews; entries expire with `push_answers`. Existing events
+without a preview retain a generic fallback.
 Opening one still requires a valid website session and current task access.
 
 Delivery commits attempt intent before network I/O. An uncertain result or crash

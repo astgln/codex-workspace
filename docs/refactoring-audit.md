@@ -142,3 +142,15 @@ names match the local production build. CI for `b4d9593` passed unit and all 34
 browser cases. A read-only server query found zero push subscriptions and zero
 deliveries: actual device enablement/delivery remains unverified, not a provider
 failure diagnosis.
+
+
+## Confirmed iPhone acceptance and requested notification previews
+
+The owner confirmed that the PWA menu and notifications work on the phone. This
+closes those previously unverified device checks; the brother's access/attachment
+round trip is still pending. The owner then requested task names and message text
+in notifications. Push payloads now contain the task title and a bounded preview
+of the exact request/answer, with current-access checks and existing event
+deduplication unchanged. The service worker displays these fields as plain text.
+Automated validation: 232 Python tests, production build, and focused worker/PWA
+checks; the changed preview presentation still needs observation on the phone.

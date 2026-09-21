@@ -11,6 +11,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives import serialization
 from pywebpush import webpush, WebPushException
 from cloud import workspace, domain
+from server import push_preview
 
 
 @contextmanager
@@ -32,6 +33,7 @@ def initialize(store):
         fd=os.open(key,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
         with os.fdopen(fd,'wb') as stream:stream.write(raw)
     with database(store) as db:
+        push_preview.initialize(db)
         db.executescript('''CREATE TABLE IF NOT EXISTS push_subscriptions(id TEXT PRIMARY KEY,uid INTEGER,subscription TEXT,created INTEGER);
         CREATE TABLE IF NOT EXISTS push_deliveries(subscription TEXT,event TEXT,attempts INTEGER,next_attempt INTEGER,done INTEGER,PRIMARY KEY(subscription,event));
         CREATE TABLE IF NOT EXISTS push_answers(id TEXT PRIMARY KEY,thread TEXT,created INTEGER);''')
@@ -87,7 +89,7 @@ def send(store,sub,payload):
     if not endpoint_ok(sub['endpoint']):return 410
     with NoRedirect() as session:
         try:
-            response=webpush(sub,json.dumps(payload),vapid_private_key=str(store.directory/'vapid.pem'),
+            response=webpush(sub,json.dumps(payload,ensure_ascii=False),vapid_private_key=str(store.directory/'vapid.pem'),
                 vapid_claims={'sub':os.environ['PUBLIC_ORIGIN']},ttl=3600,timeout=10,requests_session=session)
             return response.status_code
         except WebPushException as exc:
@@ -110,6 +112,7 @@ def tick(store,owner):
         subscriptions=db.execute('SELECT id,uid,subscription,created FROM push_subscriptions').fetchall()
         db.execute('DELETE FROM push_answers WHERE created<?',(now-86400,))
         db.execute('DELETE FROM push_deliveries WHERE next_attempt<?',(now-7*86400,))
+        db.execute('DELETE FROM push_previews WHERE event NOT IN (SELECT id FROM push_answers)')
     for ident,uid,raw,created in subscriptions:
         try:allowed=workspace.permitted_threads(state,uid,owner);admin=workspace.is_owner(state,uid,owner)
         except workspace.Forbidden:continue
@@ -121,9 +124,6 @@ def tick(store,owner):
                 if row and (row[2] or row[1]>now or row[0]>=8):continue
                 attempts=(row[0] if row else 0)+1
                 db.execute('INSERT OR REPLACE INTO push_deliveries VALUES(?,?,?,?,2)',(ident,event,attempts,now+120))
-            # No task names, message bodies, files or approval credentials on lock screen.
-            payload={'title':'Codex Workspace','body':'Новый запрос на одобрение' if kind=='approval' else 'Готов новый ответ',
-                     'url':'/#approvals' if kind=='approval' else '/#thread='+thread,'tag':kind+':'+thread}
             fresh=store.mutate(lambda s:s.copy())
             try:
                 if thread not in workspace.permitted_threads(fresh,uid,owner):continue
@@ -133,6 +133,7 @@ def tick(store,owner):
             except workspace.Forbidden:continue
             with database(store) as db:
                 if not db.execute('SELECT 1 FROM push_subscriptions WHERE id=? AND uid=?',(ident,uid)).fetchone():continue
+            payload=push_preview.payload(store,fresh,event,thread,kind)
             code=send(store,json.loads(raw),payload)
             with database(store) as db:
                 db.execute('UPDATE push_deliveries SET done=?,next_attempt=? WHERE subscription=? AND event=?',
