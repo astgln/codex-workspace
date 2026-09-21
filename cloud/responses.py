@@ -40,6 +40,7 @@ def publish(state, body, now):
                     result_status=status, result_updated=now)
     if turn is not None:
         item['result_turn_id'] = turn
+    state['collector_seen'] = now
     return {'ok': True, 'revision': revision}
 
 

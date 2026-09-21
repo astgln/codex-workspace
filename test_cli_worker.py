@@ -55,6 +55,26 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(self.q.pending()['messages'][0]['local_status'], 'pending')
         self.api.call.assert_not_called()
 
+    def test_running_turn_published_before_process_completion(self):
+        from worker_recovery import collect
+        from queue_transport import publish_results
+        request=self.q.begin(-1,T,U,api=self.api)
+        with self.q.db:
+            dispatch={'thread':T,'baseline':U,'marker':request['marker'],'transport':'cli','prompt':request['text']}
+            self.q.db.execute('UPDATE requests SET dispatch=? WHERE id=-1',(json.dumps(dispatch),))
+        with self.path.open('a') as out:
+            out.write(json.dumps({'type':'event_msg','payload':{'type':'item_completed','thread_id':T,'turn_id':V,'item':{'type':'UserMessage','id':'u','content':[{'type':'text','text':request['text']}]}}})+'\n')
+        row=self.q.db.execute('SELECT * FROM requests').fetchone()
+        self.assertFalse(collect(self.q,self.home,row,include_running=True))
+        publish_results(self.q,self.api)
+        row=self.q.db.execute('SELECT * FROM requests').fetchone()
+        self.assertEqual(row['status'],'dispatched')
+        self.assertEqual(json.loads(row['result'])['status'],'running')
+        self.assertEqual(json.loads(row['result'])['turn_id'],V)
+        revision=row['revision']
+        collect(self.q,self.home,row,include_running=True)
+        self.assertEqual(self.q.db.execute('SELECT revision FROM requests').fetchone()[0],revision)
+
     def test_success_is_correlated_and_not_repeated(self):
         self.assertEqual(self.dispatch()['status'],'completed')
         self.assertEqual(self.dispatch()['status'],'idle')

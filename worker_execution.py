@@ -3,7 +3,7 @@ import os
 import subprocess
 
 
-def execute(state_directory, ident, args, prompt, cwd, run=subprocess.run):
+def execute(state_directory, ident, args, prompt, cwd, run=None, progress=None):
     folder = state_directory / 'cli-runs'
     folder.mkdir(mode=0o700, exist_ok=True)
     output = folder / (str(ident) + '.jsonl')
@@ -11,4 +11,16 @@ def execute(state_directory, ident, args, prompt, cwd, run=subprocess.run):
     # Explicit file modes also protect direct callers without the service umask.
     with os.fdopen(os.open(output, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600), 'w') as stdout:
         with os.fdopen(os.open(errors, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600), 'w') as stderr:
-            return run(args, input=prompt, text=True, stdout=stdout, stderr=stderr, cwd=cwd)
+            if run is not None:
+                return run(args, input=prompt, text=True, stdout=stdout, stderr=stderr, cwd=cwd)
+            with subprocess.Popen(args, stdin=subprocess.PIPE, text=True, stdout=stdout, stderr=stderr, cwd=cwd) as process:
+                payload = prompt
+                while True:
+                    try:
+                        process.communicate(input=payload, timeout=5)
+                        break
+                    except subprocess.TimeoutExpired:
+                        payload = None
+                        if progress:
+                            progress()
+                return subprocess.CompletedProcess(args, process.returncode)

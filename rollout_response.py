@@ -54,7 +54,7 @@ def locate(root,thread):
     return matches[0]
 
 
-def recover_cli(path, thread, prompt, baseline):
+def recover_cli(path, thread, prompt, baseline, *, include_running=False):
     """Match the exact persisted CLI input, never a quoted marker in tool output.
 
     The caller durably stores prompt and baseline before starting exec resume.
@@ -113,6 +113,8 @@ def recover_cli(path, thread, prompt, baseline):
     if not isinstance(turn, str) or not UUID.fullmatch(turn) or turn == baseline:
         raise BridgeError('CLI input is not a new identified turn')
     if turn not in completed or not finals.get(turn):
+        if include_running and turn not in completed:
+            return {'thread':thread,'turn_id':turn,'status':'running','events':[]}
         return None
     return {'thread': thread, 'turn_id': turn, 'status': 'completed',
             'events': [{'type': 'agent_message', 'text': text} for text in finals[turn].values()]}

@@ -243,3 +243,16 @@ commands close connections through the queue context manager. Ready responses
 are published before inbox/network/download work, so a failing inbox cannot
 starve already completed output. Recovery and immutable dispatch checks remain
 in the queue and execution adapters; no controller task is involved.
+
+## Correlated in-progress execution
+
+The production CLI executor polls the child process with a bounded communicate
+wait. It sends prompt stdin only once and checks the journal between waits.
+A running response is published only after the exact prompt is matched to one new
+turn after the saved baseline in the correct task. Ambiguous matching still fails
+closed. Repeated running snapshots retain their revision; accepted publications
+refresh collector freshness so long turns do not appear disconnected. The final
+response retains the same turn identity and advances the response revision.
+Network/recovery failures during polling preserve the active process and durable
+intent; they never trigger a new CLI execution. Unit tests cover pre-completion
+publication, stable revisions and process polling without repeated stdin.

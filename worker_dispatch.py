@@ -5,9 +5,10 @@ from bridge import BridgeError
 from cli_session import snapshot, command
 from worker_recovery import collect, request_text
 from worker_execution import execute
+from queue_transport import publish_results
 
 
-def dispatch_one(queue, home, executable, catalog, run=subprocess.run, *, api, should_stop=lambda: False):
+def dispatch_one(queue, home, executable, catalog, run=None, *, api, should_stop=lambda: False):
     # Recover first. An interrupted dispatch is never submitted a second time.
     for row in queue.db.execute("SELECT * FROM requests WHERE status IN ('dispatching','dispatched')").fetchall():
         collect(queue,home,row)
@@ -39,12 +40,30 @@ def dispatch_one(queue, home, executable, catalog, run=subprocess.run, *, api, s
             dispatch=json.loads(row['dispatch'])
             dispatch.update(transport='cli',prompt=prompt,settings=state['settings'])
             queue.db.execute('UPDATE requests SET dispatch=? WHERE id=?',(json.dumps(dispatch),item['id']))
-        result = execute(queue.state, item['id'], args, prompt, state['settings']['cwd'], run)
+        def progress():
+            try:
+                publish_results(queue, api)
+                current = queue.db.execute('SELECT * FROM requests WHERE id=?',(item['id'],)).fetchone()
+                if current['status'] in ('dispatching','dispatched'):
+                    collect(queue, home, current, include_running=True)
+                    publish_results(queue, api)
+                    current = queue.db.execute('SELECT result FROM requests WHERE id=?',(item['id'],)).fetchone()
+                    if current['result']:
+                        response = json.loads(current['result'])
+                        if response['status'] == 'running':
+                            api.call('/v2/responses', response)
+            except (BridgeError, OSError, ValueError, KeyError):
+                # The child may still be running; preserve its durable intent.
+                # Network/recovery failure cannot justify killing or resubmitting it.
+                pass
+        result = execute(queue.state, item['id'], args, prompt, state['settings']['cwd'], run, progress)
+        publish_results(queue, api)
         with queue.db:
+            dispatch=json.loads(queue.db.execute('SELECT dispatch FROM requests WHERE id=?',(item['id'],)).fetchone()['dispatch'])
             dispatch['exit_code']=result.returncode
             queue.db.execute('UPDATE requests SET dispatch=? WHERE id=?',(json.dumps(dispatch),item['id']))
         row=queue.db.execute('SELECT * FROM requests WHERE id=?',(item['id'],)).fetchone()
-        matched=collect(queue,home,row)
+        matched=row['status']=='complete' or collect(queue,home,row)
         return {'status':'completed' if matched else 'needs_reconciliation','id':item['id']}
     unresolved = [row['id'] for row in queue.db.execute(
         "SELECT id FROM requests WHERE status IN ('dispatching','dispatched')")]
