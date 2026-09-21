@@ -7,7 +7,7 @@ from .access import Forbidden
 def sync_catalog(state, body, project, now):
     if body.get('project_id') != project:
         raise Forbidden()
-    project_entries = body.get('projects', [{'id':project,'title':'Warcraft'}])
+    project_entries = body.get('projects', [{'id':project,'title':'Project'}])
     if not isinstance(project_entries,list) or len(project_entries)>100:
         raise domain.Rejected('Invalid projects')
     projects={}
@@ -35,6 +35,6 @@ def sync_catalog(state, body, project, now):
     state['catalog_updated'] = now
     # Revoking a target immediately stops every not-yet-delivered request to it.
     for item in state['items'].values():
-        if item.get('channel') == 'web' and (item['thread'] not in catalog or catalog[item['thread']].get('read_only')) and item['status'] in ('approved', 'awaiting_approval'):
+        if item.get('channel') == 'web' and (item['thread'] not in catalog or catalog[item['thread']].get('read_only')) and item['status'] == 'queued':
             item['status'] = 'target_unavailable'
     return {'count': len(catalog)}

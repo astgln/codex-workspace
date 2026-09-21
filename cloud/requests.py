@@ -1,10 +1,10 @@
-"""Request submission, decisions, leasing and pre-dispatch validation."""
+"""Request submission, leasing and pre-dispatch validation."""
 import hashlib
 import json
 import re
 import secrets
 from . import domain
-from .access import Forbidden, is_owner, requires_approval, can_submit
+from .access import Forbidden, can_submit
 
 MAX_TEXT = 16000
 
@@ -43,33 +43,15 @@ def submit(state, uid, owner, body, now):
         raise domain.Rejected('Mailbox full')
     if any('used_by' in state['uploads'][a['id']] for a in attachments):
         raise domain.Rejected('Attachment already submitted')
-    # Telegram update IDs are nonnegative; local Web IDs use another space.
+    # Preserve stable negative IDs across database upgrades.
     ident = state.get('web_sequence', 0) - 1
     state['web_sequence'] = ident
     item = dict(id=ident, source=source, channel='web', sender=uid, message=0,
-        thread=thread, text=text, snapshot=fingerprint, created=now, expires=now + domain.APPROVAL_TTL,
-        status='awaiting_approval', nonce=secrets.token_urlsafe(18), card='disabled', reply='none', events=[], attachments=attachments)
-    if not requires_approval(state, uid, owner):
-        item.update(status='approved', approved_by=state['bindings'][owner], decision_at=now, approval_source='member_policy' if uid != state['bindings'][owner] else 'owner')
+        thread=thread, text=text, snapshot=fingerprint, created=now, expires=now + domain.REQUEST_TTL,
+        status='queued', events=[], attachments=attachments)
     state['items'][str(ident)] = item
     for attachment in attachments:
         state['uploads'][attachment['id']]['used_by']=ident
-    return public_item(item)
-
-
-def decision(state, uid, owner, body, now):
-    domain.cleanup(state, now)
-    if not is_owner(state, uid, owner):
-        raise Forbidden()
-    item = state['items'].get(str(body.get('id')))
-    action = body.get('decision')
-    if not item or item.get('channel') != 'web' or action not in ('approved', 'rejected') or body.get('snapshot') != item['snapshot']:
-        raise domain.Rejected('Invalid decision')
-    if item['status'] == action:
-        return public_item(item)
-    if (item['status'] != 'awaiting_approval' or not can_submit(state, item['sender'], owner, item['thread'])):
-        raise domain.Rejected('Decision no longer valid')
-    item.update(status=action, approved_by=uid, decision_at=now)
     return public_item(item)
 
 
@@ -77,7 +59,7 @@ def collect(state, now, owner):
     domain.cleanup(state, now)
     state['collector_seen'] = now
     for item in state['items'].values():
-        if (item.get('channel') == 'web' and item['status'] == 'approved' and item.get('lease_until', 0) <= now
+        if (item.get('channel') == 'web' and item['status'] == 'queued' and item.get('lease_until', 0) <= now
                 and can_submit(state, item['sender'], owner, item['thread'])):
             item['lease'] = secrets.token_urlsafe(24)
             item['lease_until'] = now + 120

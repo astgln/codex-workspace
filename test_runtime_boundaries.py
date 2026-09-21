@@ -17,13 +17,3 @@ import web_client
 '''
         result = subprocess.run([sys.executable, '-c', source], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-
-    def test_legacy_errors_and_conflicts_remain_same_classes(self):
-        import bridge
-        import cloud_client
-        import runtime_support
-        import workspace_client
-        self.assertIs(bridge.BridgeError, runtime_support.BridgeError)
-        self.assertIs(bridge.exclusive, runtime_support.exclusive)
-        self.assertIs(cloud_client.API, workspace_client.API)
-        self.assertIs(cloud_client.Conflict, workspace_client.Conflict)

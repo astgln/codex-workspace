@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import Mock
 import time
 from cloud import domain, workspace
-from bridge import BridgeError
+from runtime_support import BridgeError
 from web_client import Queue
 
 
@@ -81,7 +81,7 @@ class CollectorTests(unittest.TestCase):
 
     def test_lost_receipt_response_recovers_after_restart_without_second_dispatch(self):
         state=domain.initial()
-        state['items']['-1']={**self.item,'channel':'web','status':'approved','expires':2000,'lease_until':1120}
+        state['items']['-1']={**self.item,'channel':'web','status':'queued','expires':2000,'lease_until':1120}
         class InterruptedAPI:
             def call(self,path,body):
                 domain.receipt(state,body,1001)

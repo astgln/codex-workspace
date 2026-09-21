@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from rollout_history import read_public
 from history_client import messages,publish
-from bridge import BridgeError
+from runtime_support import BridgeError
 
 class HistoryJournalTests(unittest.TestCase):
  def test_only_public_completed_items_even_after_tools(self):

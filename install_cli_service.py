@@ -7,7 +7,7 @@ import plistlib
 import subprocess
 import sys
 
-LABEL = 'net.warcraft.codex-requests'
+LABEL = 'net.codex-workspace.requests'
 ROOT = Path(__file__).resolve().parent
 
 

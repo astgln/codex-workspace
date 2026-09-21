@@ -1,169 +1,82 @@
-# Развёртывание отдельного веб-приложения
+# Развёртывание
 
-## Компоненты
+Используйте отдельные checkout, конфигурацию и базу для каждой ветки.
+Действующая установка Yandex Cloud закреплена за `experimental/multi-user`.
+`main` — отдельная однопользовательская сборка со schema 4; не публикуйте её
+поверх экспериментальной установки без отдельного решения о переходе.
 
-Небольшая выделенная VM Ubuntu, отдельная сеть и группа безопасности,
-Lockbox для Telegram-токена. VM получает только
-доступ на чтение своего секрета. API Gateway сохраняет
-публичный HTTPS-адрес и направляет запросы на порт 8080 по внутренней сети.
-Прямой публичный доступ к приложению закрыт группой безопасности.
+## Сервер
 
-На VM работают один процесс Uvicorn, SQLite в режиме WAL. Установка и обновления выполняются по SSH/SCP. Путь данных: `/var/lib/codex-workspace`; конфигурация с
-токеном: `/etc/codex-workspace/config.json` (root:service, 0640).
-Данные и конфигурация отделены от каталога релиза.
+Нужны VM Ubuntu, сервисный аккаунт с доступом только к нужному Lockbox secret,
+API Gateway с публичным HTTPS и закрытая сеть Gateway → VM:8080.
+SSH ограничивается проверенным административным IPv4 /32. Скрипты не изменяют VPN.
 
-## Установка и обновление
-
-`deploy_vm.py` использует авторизованный `yc` и локальный checkpoint прежнего
-развёртывания `.local/deployment.json`. Ресурсы создаются в явно указанном
-каталоге. Имя проекта, владелец и разрешённые пользователи не меняются
-неявно. Скрипт не меняет профиль `yc`, VPN, DNS или настройки Codex.
+Секрет `TELEGRAM_BOT_TOKEN` хранится в Lockbox. Закрытая локальная конфигурация
+`.local/deployment.json` содержит IDs ресурсов, `folder`, `project` (ID области
+каталога), `settings.owner`, `secret`, `client_hash`, `url`, `vm_instance`,
+`vm_public_ip`, `vm_private_ip`, `vm_network`, `gateway`, `release_branch`.
+Значение клиентского ключа в этот JSON не помещается.
+Существующие ресурсы импортируйте по проверенным ID; не угадывайте VM по SSH alias.
 
 ```sh
-python3 deploy_vm.py --folder YOUR_FOLDER --thread BRIDGE_THREAD \
-  --project WARCRAFT_PROJECT --owner OWNER --allowed OWNER MEMBER \
-  --ssh-source SSH_EGRESS_IPV4
+python3 deploy_vm.py --folder FOLDER_ID --project CATALOG_ID \
+  --owner TELEGRAM_USERNAME --ssh-source ADMIN_IPV4
 npm ci --prefix web --ignore-scripts
 npm --prefix web run build
 python3 release_vm.py publish
-python3 release_vm.py probe
 ```
 
-Первый перенос существующего mailbox с Cloud Functions выполняется через
-`release_vm.py publish --initial-migration`. На время снимка запись в прежний
-веб-API замораживается. Экспорт доступен только через закрытую IAM-функцию;
-содержимое не выводится в терминал или задачу. Начальное состояние импортируется
-только при отсутствии SQLite, последующие релизы его не перезаписывают.
+`deploy_vm.py` требует заранее заданного `secret` в deployment.json. Это
+инструмент VM provisioning, а не автоматическое создание Telegram-бота и Lockbox.
+Для отдельной разрешённой сети можно явно указать `--ssh-interface en0` у
+`release_vm.py publish`. Интерфейс должен уже существовать; маршруты не меняются.
 
-После ответа `/vm-health` с `mode=standalone-web`:
+SSH host key берётся из аутентифицированного Compute API, проверка host key
+обязательна. Артефакт передаётся SCP и сверяется по SHA-256. Установщик получает
+секрет из Lockbox, выполняет резервное копирование SQLite и репетицию миграции,
+затем переключает `/opt/codex-workspace/current` и перезапускает `codex-workspace`.
+Проверка `/health` по SSH подтверждает доступность процесса, а не вход пользователя.
+
+Для нового Gateway выполните `python3 release_vm.py cutover` после проверки VM.
+В BotFather зарегистрируйте точный HTTPS origin для Telegram Login. Корневой URL
+сайта работает без специальных query-параметров. Серверу передаются
+`OWNER_USERNAME`, `TELEGRAM_BOT_TOKEN`, `CLIENT_KEY_HASH`, `PROJECT_ID`,
+`PUBLIC_ORIGIN`. Конфигурация `/etc/codex-workspace/config.json` закрыта для чтения
+посторонним. Секреты не включаются в Git, cloud-init или argv.
+
+## Компьютер с Codex
+
+Файл `.local/web.json` содержит `url`, `key_file` и `paused`; `key_file` указывает
+на файл 0600 с `BRIDGE_CLIENT_KEY`. Каталог проектов задаётся отдельно.
+Сохраните конфигурацию приватно; не копируйте её в сообщения или отчёты.
 
 ```sh
-python3 release_vm.py cutover
+python3 web_client.py catalog /absolute/path/to/catalog.json
+python3 install_cli_service.py --codex /absolute/path/to/codex \
+  --catalog /absolute/path/to/catalog.json
+python3 history_watch.py --catalog /absolute/path/to/catalog.json
 ```
 
-Сборка передаётся по SCP, установка и проверка `/health` выполняются по SSH.
-Ключ хоста берётся из аутентифицированного вывода загрузки Compute API;
-StrictHostKeyChecking включён. На VM проверяется SHA-256 полученного архива.
-Публикация использует обычные SSH/SCP-соединения без локального управляющего сокета.
-Начальная настройка VM устанавливает Python и SSH-ключ, но не запускает
-загрузку приложения из хранилища. Старый экспериментальный таймер установки
-отключается при первом развёртывании по SSH.
+История должна работать отдельной пользовательской службой с закрытыми логами.
+Установщик запросов отказывается перезаписывать существующий launchd job.
+При переносе существующей службы сначала дождитесь отсутствия выполняемого
+запроса, остановите прежний job и обновите пути. Не запускайте два обработчика
+одной очереди. Каталог и очередь сохраняются при переносе checkout.
 
-Токен извлекается из Lockbox внутри VM и не передаётся через shell-аргументы.
-Исходящий адрес SSH должен соответствовать облачной группе безопасности;
-смена адреса VPN требует обновления точного `/32` правила. Более широкий
-диапазон не включается автоматически. Скрипт не меняет сеть ноутбука.
+## PWA и уведомления
 
-`--recreate-empty` допустим только для первоначальной VM, на которую приложение
-ещё не установлено. Он не является механизмом обновления работающей системы.
+На iPhone: Safari → Поделиться → На экран «Домой». Откройте установленное
+приложение и явно включите уведомления (iOS 16.4+). VAPID-ключ создаётся в закрытом
+серверном каталоге и должен сохраняться между релизами. Push содержит название
+задачи и сокращённый ответ. Неопределённая отправка автоматически не повторяется.
 
-## Вход
+## Восстановление
 
-В BotFather → Login Widget зарегистрируйте точный HTTPS origin сайта.
-Используется popup-поток Telegram Login (`post_message`) с подписанным ответом
-Login Widget (также поддерживается подписанный OIDC ID token). Это вход на обычный
-сайт; Telegram Mini App и обмен authorization code с Client Secret не требуются. URL явно содержит `origin`: текущая
-официальная JS-библиотека пропускает его, а сервер Telegram возвращает `origin required`.
-Обработчик принимает результат только с origin Telegram и из открытого им окна;
-затем сервер проверяет подпись. OIDC-токен должен содержать одноразовый nonce.
-В живом окружении Telegram также возвращает объект Login Widget с `hash`.
-Он проверяется по [официальной схеме HMAC](https://core.telegram.org/widgets/login-legacy):
-ключ — SHA-256 токена бота, подписываются все полученные поля кроме `hash`.
-Принимаются ответы не старше пяти минут; сервер атомарно погашает challenge и
-подписанное подтверждение, не позволяя повторить его с новым challenge.
-Widget не содержит подписанного nonce, поэтому его replay-проверка отдельная.
-Ни один формат не принимается без своей криптографической проверки. Ключи получаются только с
-фиксированного официального JWKS endpoint с проверкой TLS.
+Перед релизом создаётся согласованная приватная копия SQLite. Для отката на
+старую схему остановите сервис и восстановите совместимую проверенную копию
+в отдельный путь. Не запускайте старый код поверх новой схемы и не удаляйте
+локальную очередь для повтора неопределённого запроса. Процедуры сверки —
+в [описании локальных служб](collector-routing.md).
 
-Сервер обновляет публичные ключи раз в час. При сетевой недоступности свежий
-кеш может доставить доверенный локальный сборщик через защищённый API.
-Это дополнительное полномочие сборщика: его ключ должен храниться как секрет.
-Кеш старше 24 часов не используется; неизвестный ключ и неподтверждённая подпись
-не дают вход. После проверки Telegram сервер выдаёт случайную непрозрачную сессию
-в cookie `__Host-workspace-session` с Secure, HttpOnly, SameSite=Lax и Path=/.
-В SQLite хранится SHA-256 идентификатора, срок и отдельный CSRF-токен.
-JavaScript не получает идентификатор сессии. POST-запросы требуют точного
-`PUBLIC_ORIGIN` и CSRF-токена; выход отзывает сессию на сервере. Сессия действует
-восемь часов и восстанавливается после обновления страницы.
-
-`PUBLIC_ORIGIN` задаётся при SSH-развёртывании из HTTPS URL приложения.
-Корневой URL работает без query-параметров: `v=widget-login` использовался только
-для обхода старого кэша. HTML и ответы авторизации имеют `Cache-Control: no-store`.
-
-Владелец входит первым, участник — со своего аккаунта. После первого входа
-участника владелец выдаёт ему доступ на странице «Доступ к тредам».
-Авторизация участника сама по себе не открывает ни одного треда.
-
-## Локальный сборщик и передача в Codex
-
-Настройки: `.local/web.json` с `url`, `project_id`, `key_file`, `paused`.
-Клиентский ключ хранится отдельно в файле 0600. На сервере — только его SHA-256.
-Каталог содержит точные ID проектов и задач из приложения; локальные пути
-не определяют принадлежность проекту. Постоянные локальные службы запросов
-и истории работают автономно и независимо. Доставка использует `codex exec
-resume` с исходными правами задачи; desktop сохраняет обычный режим.
-
-Установка, состояния очереди, корреляция ответов и безопасное обновление:
-[collector-routing.md](collector-routing.md). Ручная передача из управляющей
-задачи и общий App Server не входят в рабочую архитектуру.
-
-## Эксплуатационные ограничения
-
-Одна VM — одна точка отказа. SQLite и файлы не имеют высокой доступности;
-перед использованием для важных данных настройте отдельные резервные копии.
-200 запросов и 100 МБ вложений — ограничения маленького приватного проекта,
-а не архитектура публичного сервиса. Сборщик требует включённого ноутбука, установленного и авторизованного CLI и сети.
-При неоднозначной отправке требуется ручная сверка marker в целевой задаче.
-
-После проверки переноса старые Cloud Functions, YDB, бакет прежнего
-развёртывания и служебные аккаунты serverless-схемы удалены. Перед удалением
-состояние прежней пустой очереди сохранено в закрытом локальном архиве.
-Рабочие VM, диск, сеть, адреса, API Gateway, Lockbox и аккаунт VM сохранены.
-Старый `deploy.py` запрещает serverless-развёртывание после переноса на VM;
-обновления выполняются только через `release_vm.py publish`. Таймеры
-и Telegram webhook не нужны веб-приложению. Публичный IP VM и диск продолжают
-участвовать в тарификации согласно правилам Yandex Cloud.
-
-При split tunneling проверяйте исходящий IP именно SSH (например, первое поле `$SSH_CONNECTION` на доступном сервере). HTTPS-сервисы определения IP могут показывать другой маршрут. `--ssh-source` принимает один IPv4 и разрешает только `/32`.
-
-## Installed app and Web Push
-
-The site includes a Web App Manifest, home-screen icons and a root service
-worker. It deliberately does not cache conversations, attachments or API data.
-On iOS/iPadOS 16.4+, open in Safari, choose Share → Add to Home Screen, launch
-that installed app, sign in and enable notifications under “Уведомления”. Permission is requested only from that button's click. The same
-panel can disable the current device; signing out removes its subscription.
-
-The VM generates its VAPID private key once in the protected service data
-directory (`vapid.pem`, mode 0600); releases preserve it. Do not rotate it during
-normal deployment: subscriptions depend on its public key. No Apple Developer
-membership or Telegram messages are required for Web Push.
-
-A server loop checks every 10 seconds for approval requests (owner only) and
-completed answers (participants with current task access). Active-task public
-final answers arrive via the local history collector; request results can also
-arrive via the existing result API. Old history is not replayed as notifications.
-Push endpoints and encryption keys stay in the private SQLite database. Only
-Apple, Google and Mozilla push service endpoints are accepted; redirects are
-not followed. At the owner’s request, notifications show the task name and up to
-500 characters of the request or completed answer. Previews use only the exact
-answer event, remain encrypted in Web Push, and redact recognizable credential
-patterns. A short-lived `push_previews` operational table links history answer
-events to bounded previews; entries expire with `push_answers`. Existing events
-without a preview retain a generic fallback.
-Opening one still requires a valid website session and current task access.
-
-Delivery commits attempt intent before network I/O. An uncertain result or crash
-after intent is not retried automatically; it can therefore miss a notification.
-Explicit retryable provider responses use bounded backoff, and expired
-subscriptions are removed. History and request publications share turn identity
-to avoid duplicate answer notifications when both report the same turn. Provider acceptance is not proof of delivery to a phone. Test
-actual installed iOS delivery separately, including when the app is closed.
-
-Для явно разрешённого подключения через отдельный существующий интерфейс можно
-использовать `python3 release_vm.py publish --ssh-interface en0` (имя интерфейса
-нужно проверить на своей машине). Параметр передаёт `BindInterface` одинаково в
-SSH и SCP; VPN, таблица маршрутов и конфигурация SSH не изменяются. Правило SSH
-на VM должно разрешать подтверждённый исходящий адрес этого соединения `/32`.
-Параметр не изменяет облачные правила автоматически и не отключает проверку
-ключа сервера.
+Публикация проверяет текущую ветку по `release_branch` и требует закоммиченные
+исходники. В артефакте `release.json` записываются ветка и точный commit.

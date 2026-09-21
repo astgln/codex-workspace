@@ -1,9 +1,9 @@
 import { test, expect, type Page } from '@playwright/test';
 
-async function fixture(page: Page, role: 'owner'|'member' = 'owner') {
+async function fixture(page: Page) {
   const threads = [{id:'thread-launcher',title:'Launcher',status:'idle'}, {id:'thread-hd',title:'HD',status:'idle'}];
-  const state = {weekly_quota:{used_percent:63,observed_at:Math.floor(Date.now()/1000),resets_at:Math.floor(Date.now()/1000)+86400},user:{id:role==='owner'?10:20,role},threads,messages:[] as any[],members:[{id:20,username:'friend',requires_approval:true,threads:[]}],catalog_updated:1,collector_seen:Date.now()/1000};
-  const sent:any[] = [], decisions:any[] = [];
+  const state = {weekly_quota:{used_percent:63,observed_at:Math.floor(Date.now()/1000),resets_at:Math.floor(Date.now()/1000)+86400},user:{id:10},threads,messages:[] as any[],catalog_updated:1,collector_seen:Date.now()/1000};
+  const sent:any[] = [];
   let loggedIn=false;
   await page.route('**/auth/**',route=>{
     const path=new URL(route.request().url()).pathname;
@@ -23,25 +23,22 @@ async function fixture(page: Page, role: 'owner'|'member' = 'owner') {
     if(path==='/web/login/config')output={client_id:'123',nonce:'test-nonce',challenge:'test-challenge'};
     else if(path==='/web/login/session'){loggedIn=true;output={ok:true};}
     else if(path==='/web/state')output=state;
-    else if(path==='/web/diagnostics')output={worker:{status:'waiting_for_tasks',observed_at:1,waiting:{desktop_writer_lock:2,task_settings_unavailable:1},unresolved:3},collector_recent:true,collector_seen:1,history_synced:1,queue:{awaiting_approval:0,approved:2},completed:5,notifications:{devices:1,retrying:0,uncertain:1}};
+    else if(path==='/web/diagnostics')output={worker:{status:'waiting_for_tasks',observed_at:1,waiting:{desktop_writer_lock:2,task_settings_unavailable:1},unresolved:3},collector_recent:true,collector_seen:1,history_synced:1,queue:{queued:2},completed:5,notifications:{devices:1,retrying:0,uncertain:1}};
     else if(path==='/web/push/config')output={public_key:'test-key'};
     else if(path==='/web/history')output={messages:[],before:null,synced_at:1,loading_older:false,pending:false};
     else if(path==='/web/messages'){
-      sent.push(body); const item={...body,id:-sent.length,sender:state.user.id,status:role==='owner'?'approved':'awaiting_approval',snapshot:'immutable-snapshot',created:Date.now()/1000,expires:Date.now()/1000+86400};state.messages.push(item);output=item;
-    } else if(path==='/web/decisions'){
-      decisions.push(body); const item=state.messages.find(m=>m.id===body.id);item.status=body.decision;output=item;
-    } else if(path==='/web/member-policy')state.members[0].requires_approval=body.requires_approval;
-    else if(path==='/web/grants')Object.assign(state.members[0],{threads:body.threads,projects:body.projects||[],denied_threads:body.denied_threads||[]});
+      sent.push(body); const item={...body,id:-sent.length,sender:state.user.id,status:'queued',snapshot:'immutable-snapshot',created:Date.now()/1000,expires:Date.now()/1000+86400};state.messages.push(item);output=item;
+    }
     else return route.fulfill({status:404,body:'{}'});
     await route.fulfill({json:output});
   });
   await page.goto('/');
   await page.getByRole('button',{name:'Войти через Telegram'}).click();
   await expect(page.locator('.workspace-header')).toBeVisible();
-  return {state,sent,decisions};
+  return {state,sent};
 }
 
-test('drafts follow threads, sending preserves target, approval uses exact snapshot',async({page})=>{
+test('drafts follow threads and sending preserves target',async({page})=>{
   const f=await fixture(page);
   await page.getByRole('textbox',{name:'Сообщение',exact:true}).fill('Launcher draft');
   await page.getByRole('button',{name:'HD',exact:true}).click();
@@ -52,25 +49,11 @@ test('drafts follow threads, sending preserves target, approval uses exact snaps
   await page.getByRole('button',{name:'Отправить',exact:true}).click();
   await expect(page.getByText('Ожидает Codex',{exact:true})).toBeVisible();
   await expect(page.getByRole('button',{name:'Передать в Codex',exact:true})).toHaveCount(0);
-  expect(f.decisions).toHaveLength(0);
   expect(f.sent[0]).toMatchObject({thread:'thread-launcher',text:'Launcher draft'});
-  f.state.messages.push({id:-2,sender:20,thread:'thread-launcher',text:'Member request',status:'awaiting_approval',snapshot:'member-snapshot',created:Date.now()/1000});
-  await page.getByRole('button',{name:'Обновить',exact:true}).click();
-  await page.getByRole('button',{name:'Передать в Codex',exact:true}).click();
-  await expect(page.getByText('Ожидает одобрения',{exact:true})).toHaveCount(0);
-  expect(f.decisions[0]).toEqual({id:-2,snapshot:'member-snapshot',decision:'approved'});
   await page.getByRole('button',{name:'HD',exact:true}).click();
   await expect(page.getByRole('textbox',{name:'Сообщение',exact:true})).toHaveValue('HD draft');
 });
 
-test('member has no approval or access management controls',async({page})=>{
-  await fixture(page,'member');
-  await expect(page.getByRole('button',{name:'Доступ к тредам'})).toHaveCount(0);
-  await page.getByRole('textbox',{name:'Сообщение',exact:true}).fill('Member request');
-  await page.getByRole('button',{name:'Отправить',exact:true}).click();
-  await expect(page.getByText('Ожидает одобрения',{exact:true})).toBeVisible();
-  await expect(page.getByRole('button',{name:'Передать в Codex',exact:true})).toHaveCount(0);
-});
 
 test('mobile navigation and untrusted markdown stay in bounds',async({page})=>{
   const f=await fixture(page);
@@ -85,8 +68,8 @@ test('mobile navigation and untrusted markdown stay in bounds',async({page})=>{
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();
 });
 
-test('uploaded files remain attached to their original thread and approval payload',async({page})=>{
-  const f=await fixture(page,'member');
+test('uploaded files remain attached to their original thread and submitted payload',async({page})=>{
+  const f=await fixture(page);
   let attachment:any;
   await page.route('**/web/uploads/**',async route=>{
     const path=new URL(route.request().url()).pathname;
@@ -101,7 +84,7 @@ test('uploaded files remain attached to their original thread and approval paylo
   await expect(page.getByRole('button',{name:'Убрать Connection.log'})).toHaveCount(0);
   await page.getByRole('button',{name:'Launcher',exact:true}).click();
   await page.getByRole('button',{name:'Отправить',exact:true}).click();
-  await expect(page.getByText('Ожидает одобрения',{exact:true})).toBeVisible();
+  await expect(page.getByText('Ожидает Codex',{exact:true})).toBeVisible();
   expect(f.sent[0].attachments).toEqual(['a'.repeat(32)]);
   expect(f.sent[0].thread).toBe('thread-launcher');
 });
@@ -192,7 +175,7 @@ test('existing server session restores after reload and logout clears it',async(
   await expect(page.getByRole('button',{name:'Войти через Telegram'})).toBeEnabled();
 });
 
-test('shared history loads older messages and resets when changing thread',async({page})=>{
+test('task history loads older messages and resets when changing thread',async({page})=>{
  await fixture(page);
  await page.route('**/web/history',route=>{
   const body=route.request().postDataJSON();
@@ -261,8 +244,8 @@ test('conversation opens at end, restores reading position and anchors older his
   await expect(page.getByLabel('Остаток недельной квоты')).toHaveAttribute('value','37');
   await expect(page.getByText(/^Данные на /)).toBeVisible();
  });
- test('members see shared account quota',async({page})=>{
-  await fixture(page,'member');
+ test('account quota is visible',async({page})=>{
+  await fixture(page);
   await expect(page.getByText('Неделя: 37% осталось')).toBeVisible();
  });
 
@@ -281,25 +264,14 @@ test('notification link opens permitted task',async({page})=>{
  await fixture(page);
  await page.evaluate(()=>{location.hash='thread=thread-hd';});
  await expect(page.locator('.header-title strong')).toHaveText('HD');
- await page.evaluate(()=>{location.hash='approvals';});
- await expect(page.locator('.header-title strong')).toHaveText('Одобрения');
+
 });
 
-test('owner controls approval independently of task access',async({page})=>{
- const f=await fixture(page);
- await page.getByRole('button',{name:'Доступ к тредам',exact:true}).click();
- const toggle=page.getByRole('checkbox',{name:'Требовать одобрение запросов',exact:true});
- await expect(toggle).toBeChecked();await toggle.click();await expect(toggle).not.toBeChecked();
- expect(f.state.members[0].requires_approval).toBe(false);
- expect(f.state.members[0].threads).toEqual([]);
- await expect(page.getByText('Новые запросы сразу попадают в очередь Codex.')).toBeVisible();
- await toggle.click();await expect(toggle).toBeChecked();
-});
 
 test('project switch filters tasks and updates breadcrumb',async({page})=>{
  const f=await fixture(page);
- Object.assign(f.state,{projects:[{id:'warcraft',title:'Warcraft'},{id:'second',title:'Second'},{id:'empty',title:'Empty'}]});
- f.state.threads.forEach(t=>Object.assign(t,{project_id:'warcraft'}));
+ Object.assign(f.state,{projects:[{id:'example',title:'Проект'},{id:'second',title:'Second'},{id:'empty',title:'Empty'}]});
+ f.state.threads.forEach(t=>Object.assign(t,{project_id:'example'}));
  f.state.threads.push({id:'thread-second',title:'Second task',status:'idle',project_id:'second'} as any);
  await page.getByRole('button',{name:'Обновить',exact:true}).click();
  await page.getByLabel('Проект',{exact:true}).selectOption('second');
@@ -311,19 +283,6 @@ test('project switch filters tasks and updates breadcrumb',async({page})=>{
  await expect(page.getByRole('heading',{name:'Empty',exact:true})).toBeVisible();
 });
 
-test('project access with task exclusion and independent task grant',async({page})=>{
- const f=await fixture(page);
- await page.getByRole('button',{name:'Доступ к тредам',exact:true}).click();
- const project=page.getByRole('checkbox',{name:'Весь проект Warcraft для @friend',exact:true});
- const launcher=page.getByRole('checkbox',{name:'Launcher для @friend',exact:true});
- const hd=page.getByRole('checkbox',{name:'HD для @friend',exact:true});
- await project.click();await expect(project).toBeChecked();await expect(launcher).toBeChecked();await expect(hd).toBeChecked();
- await hd.click();await expect(hd).not.toBeChecked();await expect(launcher).toBeChecked();
- await expect(page.getByText('HD · закрыта',{exact:true})).toBeVisible();
- await project.click();await expect(project).not.toBeChecked();await expect(launcher).not.toBeChecked();
- await launcher.click();await expect(launcher).toBeChecked();await expect(hd).not.toBeChecked();
- expect(f.state.members[0].threads).toEqual(['thread-launcher']);
-});
 
 test('request activity follows queue running completion and offline states',async({page})=>{
  const f=await fixture(page);
@@ -344,13 +303,6 @@ test('request activity follows queue running completion and offline states',asyn
  await expect(page.locator('.request-activity')).toHaveCount(0);
 });
 
-test('member activity waits for approval without claiming execution',async({page})=>{
- await fixture(page,'member');
- await page.getByRole('textbox',{name:'Сообщение',exact:true}).fill('Needs approval');
- await page.getByRole('button',{name:'Отправить',exact:true}).click();
- await expect(page.getByText('Ожидаю одобрения…',{exact:true})).toBeVisible();
- await expect(page.getByText('Думаю…',{exact:true})).toHaveCount(0);
-});
 
 test('activity text shimmers and respects reduced motion',async({page})=>{
  await fixture(page);
@@ -391,10 +343,6 @@ test('owner diagnostics shows service counters',async({page})=>{
  await expect(page.getByText('Неопределённые отправки не повторяются автоматически.',{exact:false})).toBeVisible();
 });
 
-test('member has no diagnostics control',async({page})=>{
- await fixture(page,'member');
- await expect(page.getByText('Состояние сервиса',{exact:true})).toHaveCount(0);
-});
 
 test('late workspace response cannot restore a logged out session',async({page})=>{
  const f=await fixture(page);
@@ -457,13 +405,13 @@ for(const delayedStage of ['start','finish'])test(`upload ${delayedStage} respon
  if(delayedStage==='start')expect(chunks).toBe(0);
 });
 
-test('notification navigation uses refreshed grants without replaying old links',async({page})=>{
- const f=await fixture(page,'member');
- f.state.threads.push({id:'thread-new',title:'Newly granted',status:'idle'});
+test('notification navigation uses refreshed catalog without replaying old links',async({page})=>{
+ const f=await fixture(page);
+ f.state.threads.push({id:'thread-new',title:'New task',status:'idle'});
  await page.getByRole('button',{name:'Обновить',exact:true}).click();
- await expect(page.getByRole('button',{name:'Newly granted',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'New task',exact:true})).toBeVisible();
  await page.evaluate(()=>{location.hash='thread=thread-new';});
- await expect(page.locator('.header-title strong')).toHaveText('Newly granted');
+ await expect(page.locator('.header-title strong')).toHaveText('New task');
  await page.getByRole('button',{name:'HD',exact:true}).click();
  await page.getByRole('button',{name:'Обновить',exact:true}).click();
  await expect(page.locator('.header-title strong')).toHaveText('HD');
@@ -472,7 +420,7 @@ test('notification navigation uses refreshed grants without replaying old links'
  await expect(page.locator('.header-title strong')).toHaveText('Launcher');
  await page.evaluate(()=>{location.hash='thread=thread-hd';});
  await expect(page.locator('.header-title strong')).toHaveText('Launcher');
- await page.evaluate(()=>{location.hash='approvals';});
+ await page.evaluate(()=>{location.hash='unrecognized';});
  await expect(page.locator('.header-title strong')).toHaveText('Launcher');
 });
 

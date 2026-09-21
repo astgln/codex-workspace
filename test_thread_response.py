@@ -1,5 +1,5 @@
 import unittest
-from bridge import BridgeError
+from runtime_support import BridgeError
 from thread_response import correlate, prompt_prefix
 
 

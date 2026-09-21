@@ -4,9 +4,8 @@ import json
 REQUEST_FIELDS = {
     'id':'INTEGER', 'source':'TEXT', 'channel':'TEXT', 'sender':'INTEGER',
     'message':'INTEGER', 'thread':'TEXT', 'text':'TEXT', 'snapshot':'TEXT',
-    'created':'INTEGER', 'expires':'INTEGER', 'status':'TEXT', 'nonce':'TEXT',
-    'card':'TEXT', 'reply':'TEXT', 'approved_by':'INTEGER', 'decision_at':'INTEGER',
-    'approval_source':'TEXT', 'lease':'TEXT', 'lease_until':'INTEGER',
+    'created':'INTEGER', 'expires':'INTEGER', 'status':'TEXT',
+    'lease':'TEXT', 'lease_until':'INTEGER',
     'delivered_at':'INTEGER', 'result_revision':'INTEGER', 'result_digest':'TEXT',
     'result_status':'TEXT', 'result_updated':'INTEGER',
 }
@@ -31,10 +30,12 @@ def create(db):
     db.execute('CREATE TABLE request_attachments(request_key TEXT NOT NULL,position INTEGER NOT NULL,id TEXT NOT NULL,name TEXT NOT NULL,size INTEGER NOT NULL,sha256 TEXT NOT NULL,extensions TEXT NOT NULL,PRIMARY KEY(request_key,position),FOREIGN KEY(request_key) REFERENCES workspace_requests(key) ON DELETE CASCADE)')
 
 
-def read(db, state):
+def read(db, state, historical=False):
     for section, in db.execute('SELECT name FROM request_sections'):
         state[section] = {}
     for section, (table, fields) in ENTITIES.items():
+        if historical:
+            fields = [row[1] for row in db.execute('PRAGMA table_info('+table+')')][2:-2]
         for row in db.execute('SELECT key,' + ','.join(fields) + ',fields,extensions FROM '+table+' ORDER BY position'):
             key, values, mask, item = row[0], row[1:-2], row[-2], json.loads(row[-1])
             for index, (name, value) in enumerate(zip(fields, values)):

@@ -12,7 +12,7 @@ def prompt_prefix(marker):
 
 def correlate(read, thread, marker, baseline):
     if not isinstance(read, dict) or read.get('thread', {}).get('id') != thread:
-        raise BridgeError('Thread read does not match the approved target')
+        raise BridgeError('Thread read does not match the queued target')
     matches=[]
     for turn in read.get('turns', []):
         if not isinstance(turn, dict) or turn.get('id') == baseline:

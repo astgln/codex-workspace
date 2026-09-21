@@ -12,7 +12,7 @@ def inspect(store, uid, owner):
         if not is_owner(state, uid, owner):
             raise Forbidden()
         now = int(time.time())
-        statuses = ('awaiting_approval','approved','delivered','rejected','expired','target_unavailable','superseded')
+        statuses = ('queued','delivered','rejected','expired','target_unavailable','superseded')
         queue = {status: 0 for status in statuses}
         for item in state.get('items', {}).values():
             if item.get('channel') == 'web' and item.get('status') in queue:

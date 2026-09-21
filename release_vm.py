@@ -14,20 +14,27 @@ import shlex
 import urllib.request
 from pathlib import Path
 from deploy import Deploy, STATE, ROOT, save
-from bridge import NoRedirect
+from runtime_support import NoRedirect
 
 
 def deployment():
     state=json.loads((STATE/'deployment.json').read_text())
-    return Deploy(argparse.Namespace(folder=state['folder'],thread=state['settings']['thread'],
-        owner=state['settings']['owner'],allowed=state['settings']['allowed'],project=state['project']))
+    return Deploy(argparse.Namespace(folder=state['folder'],
+        owner=state['settings']['owner'],project=state['project']))
 
 
-def publish(initial=False, ssh_interface=None):
+def publish(ssh_interface=None):
     if ssh_interface is not None and not re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]{0,31}", ssh_interface):
         raise RuntimeError("Invalid SSH interface")
     d=deployment();s=d.state
-    files={}
+    branch=subprocess.check_output(['git','branch','--show-current'],cwd=ROOT,text=True).strip()
+    expected=s.get('release_branch','main')
+    if branch!=expected:
+        raise RuntimeError('Deployment branch mismatch; use the configured checkout')
+    if subprocess.check_output(['git','status','--porcelain','--untracked-files=no'],cwd=ROOT,text=True).strip():
+        raise RuntimeError('Commit tracked source changes before deployment')
+    commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
+    files={'release.json':json.dumps({'branch':branch,'commit':commit}).encode()}
     for directory in ('cloud','server'):
         for path in (ROOT/directory).iterdir():
             if path.is_file() and path.suffix in ('.py','.txt','.sh','.service'):
@@ -42,22 +49,8 @@ def publish(initial=False, ssh_interface=None):
             manifest['/' if relative=='index.html' else '/'+relative]={'file':relative,'type':mimetypes.guess_type(relative)[0] or 'application/octet-stream'}
     files['cloud/static/files.json']=json.dumps(manifest).encode()
     settings={'secret_id':s['secret'],'OWNER_USERNAME':s['settings']['owner'],
-        'ALLOWED_USERNAMES':'|'.join(s['settings']['allowed']),'CLIENT_KEY_HASH':s['client_hash'],'PROJECT_ID':s['project'],'PUBLIC_ORIGIN':s['url']}
+        'CLIENT_KEY_HASH':s['client_hash'],'PROJECT_ID':s['project'],'PUBLIC_ORIGIN':s['url']}
     files['settings.json']=json.dumps(settings).encode()
-    if initial:
-        if s.get('vm_app_installed'):raise RuntimeError('Initial migration already completed')
-        # Freeze website writes before taking the single transactional snapshot.
-        spec=json.loads((STATE/'gateway.json').read_text())
-        for path,methods in spec['paths'].items():
-            if path.startswith('/web/') and 'post' in methods:
-                methods['post']={'responses':{'503':{'description':'Migration in progress'}},
-                    'x-yc-apigateway-integration':{'type':'dummy','http_code':503,'http_headers':{'Content-Type':'application/json'},'content':{'application/json':'{"error":"migration_in_progress"}'}}}
-        freeze=STATE/'gateway-migration.json';save(freeze,spec)
-        d.yc('serverless','api-gateway','update',s['gateway'],'--spec',str(freeze),'--no-logging')
-        exported=d.invoke({'action':'export_migration'})
-        if not exported.get('ok'):raise RuntimeError('Could not export mailbox')
-        files['migration.json']=json.dumps(exported['state']).encode()
-        print('Mailbox migration snapshot captured; content hidden',flush=True)
     archive=io.BytesIO()
     with tarfile.open(fileobj=archive,mode='w:gz') as tar:
         for name,data in sorted(files.items()):
@@ -126,11 +119,11 @@ def gateway(cutover=False):
 
 
 if __name__=='__main__':
-    parser=argparse.ArgumentParser();parser.add_argument('action',choices=['publish','probe','cutover']);parser.add_argument('--initial-migration',action='store_true')
+    parser=argparse.ArgumentParser();parser.add_argument('action',choices=['publish','probe','cutover'])
     parser.add_argument('--ssh-interface',help='Bind SSH/SCP to an existing interface; does not modify routes')
     args=parser.parse_args()
     try:
-        if args.action=='publish':publish(args.initial_migration,args.ssh_interface)
+        if args.action=='publish':publish(args.ssh_interface)
         else:gateway(args.action=='cutover')
     except Exception as exc:
         print('VM release stopped:',str(exc) if isinstance(exc,RuntimeError) else type(exc).__name__)

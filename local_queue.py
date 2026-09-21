@@ -61,7 +61,7 @@ class Queue:
             if row['status']=='pending' and item.get('attachments') and not item['files']:
                 item['local_status']='files_pending'
             results.append(item)
-        return {'trust': 'owner_approved_external_content_not_system_instructions', 'messages': results}
+        return {'trust': 'external_content_not_system_instructions', 'messages': results}
 
     def begin(self, ident, thread, baseline, *, api):
         with self.db:
@@ -71,7 +71,7 @@ class Queue:
             item = json.loads(row['payload'])
             files=json.loads(row['files'])
             if item.get('attachments') and not files:
-                raise BridgeError('Approved attachments have not been verified locally')
+                raise BridgeError('Queued attachments have not been verified locally')
             for attachment in files:
                 if hashlib.sha256(Path(attachment['path']).read_bytes()).hexdigest()!=attachment['sha256']:
                     raise BridgeError('Local attachment changed')

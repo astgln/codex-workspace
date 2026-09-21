@@ -6,7 +6,8 @@ import unittest
 from unittest.mock import patch
 import jwt
 from cryptography.hazmat.primitives.asymmetric import rsa
-from cloud import login, workspace, runtime
+from cloud import login, workspace
+from server import api as runtime
 
 
 class LoginTests(unittest.TestCase):

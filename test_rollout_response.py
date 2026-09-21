@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from bridge import BridgeError
+from runtime_support import BridgeError
 from rollout_response import recover, recover_cli
 
 T='11111111-1111-1111-1111-111111111111'

@@ -5,7 +5,7 @@ import tempfile
 import unittest
 import tomllib
 
-from bridge import BridgeError
+from runtime_support import BridgeError
 from cli_session import snapshot, writer_busy, command
 
 T = '11111111-1111-1111-1111-111111111111'

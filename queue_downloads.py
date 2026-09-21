@@ -1,4 +1,4 @@
-"""Download and verify approved immutable attachments before dispatch."""
+"""Download and verify queued immutable attachments before dispatch."""
 import base64
 import hashlib
 import json
@@ -19,7 +19,7 @@ def downloads(queue, api):
         for attachment in attachments:
             ident=attachment.get('id','')
             if not re.fullmatch('[a-f0-9]{32}',ident) or not 0<attachment['size']<=5*1024*1024:
-                raise BridgeError('Invalid approved attachment')
+                raise BridgeError('Invalid queued attachment')
             match=re.search(r'\.[A-Za-z0-9]{1,12}$',attachment['name'])
             path=directory/(ident+(match.group(0) if match else '.bin'))
             temporary=path.with_suffix(path.suffix+'.part')

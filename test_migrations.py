@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from server import migrations
+from server import migrations, schema_legacy
 from server.store import Store
 
 
@@ -42,7 +42,7 @@ class MigrationTests(unittest.TestCase):
     def test_migration_parity_reopen_and_no_duplicate_authority(self):
         for _ in range(2):
             store = Store(self.temp.name)
-            self.assertEqual(store.mutate(copy.deepcopy), self.state)
+            self.assertEqual(store.mutate(copy.deepcopy), schema_legacy.normalize(self.state))
         with database(self.path) as db:
             self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], migrations.VERSION)
             residual = json.loads(db.execute('SELECT value FROM mailbox').fetchone()[0])
@@ -62,17 +62,17 @@ class MigrationTests(unittest.TestCase):
             self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 0)
             self.assertEqual(json.loads(db.execute('SELECT value FROM mailbox').fetchone()[0]), self.state)
             self.assertIsNone(db.execute("SELECT name FROM sqlite_master WHERE name='member_bindings'").fetchone())
-        self.assertEqual(Store(self.temp.name).mutate(copy.deepcopy), self.state)
+        self.assertEqual(Store(self.temp.name).mutate(copy.deepcopy), schema_legacy.normalize(self.state))
 
     def test_failed_mutation_rolls_back_access_and_residual_together(self):
         store = Store(self.temp.name)
         def mutate(state):
             state['bindings']['new'] = 30
             state['unknown_future_field'] = 'changed'
-            state['member_policies']['20'] = {'requires_approval': 'invalid'}
+            raise ValueError('simulated failure')
         with self.assertRaises(ValueError):
             store.mutate(mutate)
-        self.assertEqual(store.mutate(copy.deepcopy), self.state)
+        self.assertEqual(store.mutate(copy.deepcopy), schema_legacy.normalize(self.state))
 
     def test_newer_schema_is_rejected_without_changes(self):
         with database(self.path) as db:
@@ -84,7 +84,7 @@ class MigrationTests(unittest.TestCase):
 
     def test_restore_keeps_post_migration_changes_and_other_tables(self):
         store = Store(self.temp.name)
-        store.mutate(lambda state: state['thread_grants']['20'].append('new-task'))
+        store.mutate(lambda state: state.update(new_field='new-value'))
         expected = store.mutate(copy.deepcopy)
         target = Path(self.temp.name) / 'restored.sqlite3'
         migrations.restore_legacy_copy(self.path, target)
@@ -114,57 +114,13 @@ class MigrationTests(unittest.TestCase):
         with database(self.path) as db:
             db.execute('UPDATE mailbox SET value=?', (json.dumps(self.state),))
         store = Store(self.temp.name)
-        self.assertEqual(store.mutate(copy.deepcopy), self.state)
+        self.assertEqual(store.mutate(copy.deepcopy), schema_legacy.normalize(self.state))
         self.assertEqual(list(store.mutate(copy.deepcopy)['catalog']), ['second','first'])
         with database(self.path) as db:
             residual = json.loads(db.execute('SELECT value FROM mailbox').fetchone()[0])
             self.assertNotIn('catalog', residual)
             self.assertNotIn('projects', residual)
 
-    def test_upgrade_from_schema_one(self):
-        store = Store(self.temp.name)
-        with database(self.path) as db:
-            state = migrations.read_state(db)
-            migrations.request_store.drop(db)
-            migrations.catalog_store.drop(db)
-            db.execute('PRAGMA user_version=1')
-            migrations.write_state(db, state)
-        self.assertEqual(Store(self.temp.name).mutate(copy.deepcopy), self.state)
-
-    def test_schema_two_preserves_delivered_request_files_and_response(self):
-        self.state['items'] = {'-1': {
-            'id': -1, 'source': 'web:20:request', 'channel': 'web', 'sender': 20,
-            'thread': 'private', 'text': 'request', 'status': 'delivered',
-            'created': 10, 'expires': 9999, 'snapshot': 'a'*64, 'lease': 'opaque-lease',
-            'lease_until': 100, 'approved_by': 10, 'decision_at': 12,
-            'result_revision': 2, 'result_status': 'completed',
-            'events': [{'type':'agent_message','text':'reply'}, {'type':'error','message':'warning','severity':'warning'}],
-            'attachments': [{'id':'file','name':'log.txt','size':3,'sha256':'b'*64}],
-        }}
-        self.state['uploads'] = {'file': {'id':'file','owner':20,'thread':'private',
-            'name':'log.txt','size':3,'sha256':'b'*64,'status':'ready','used_by':-1,
-            'request_id':'upload-nonce','created':10,'expires':9999}}
-        store = Store(self.temp.name)
-        store.mutate(lambda state: (state.clear(), state.update(copy.deepcopy(self.state))))
-        # Reconstruct a schema-2 database, the currently deployed starting point.
-        with database(self.path) as db:
-            state = migrations.read_state(db)
-            migrations.request_store.drop(db)
-            db.execute('PRAGMA user_version=2')
-            migrations.write_state(db, state)
-        store = Store(self.temp.name)
-        self.assertEqual(store.mutate(copy.deepcopy), self.state)
-        with database(self.path) as db:
-            self.assertEqual(db.execute('SELECT status,lease,result_revision FROM workspace_requests').fetchone(),
-                             ('delivered','opaque-lease',2))
-            self.assertEqual(db.execute('SELECT count(*) FROM request_events').fetchone()[0],2)
-            self.assertEqual(db.execute('SELECT used_by FROM workspace_uploads').fetchone()[0],-1)
-            residual=json.loads(db.execute('SELECT value FROM mailbox').fetchone()[0])
-            self.assertFalse({'items','uploads'} & residual.keys())
-        restored = Path(self.temp.name) / 'legacy-with-request.sqlite3'
-        migrations.restore_legacy_copy(self.path, restored)
-        with database(restored) as db:
-            self.assertEqual(json.loads(db.execute('SELECT value FROM mailbox').fetchone()[0]),self.state)
 
     def test_reads_and_heartbeats_do_not_rewrite_domain_tables(self):
         store = Store(self.temp.name)

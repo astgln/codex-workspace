@@ -14,7 +14,7 @@ class Unauthorized(Exception):
 
 
 def _session_key(bot_token):
-    return hmac.new(bot_token.encode(), b'warcraft-web-session-v1', hashlib.sha256).digest()
+    return hmac.new(bot_token.encode(), b'codex-workspace-session-v2', hashlib.sha256).digest()
 
 
 def issue_session(user_id, bot_token, now):
@@ -40,10 +40,13 @@ def verify_session(token, bot_token, now):
         raise Unauthorized() from None
 
 
-def bind_user(state, user, allowed):
-    name = user['username']
-    if name in allowed and name not in state['bindings']:
-        state['bindings'][name] = user['id']
-    if user['id'] not in state['bindings'].values():
+def bind_user(state, user, owner):
+    bound = state['bindings'].get(owner)
+    if bound is not None:
+        if user['id'] != bound:
+            raise Forbidden()
+        return bound
+    if user.get('username') != owner:
         raise Forbidden()
+    state['bindings'][owner] = user['id']
     return user['id']

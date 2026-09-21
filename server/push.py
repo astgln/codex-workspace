@@ -102,8 +102,6 @@ def tick(store,owner):
     events=[]
     for item in state['items'].values():
         if item.get('channel')!='web':continue
-        if item['status']=='awaiting_approval' and item['expires']>now:
-            events.append(('approval:'+str(item['id']),item['thread'],item['created'],'approval'))
         if item.get('result_status')=='completed':
             event = 'answer:'+item['thread']+':'+item['result_turn_id'] if item.get('result_turn_id') else 'reply:'+str(item['id'])
             events.append((event,item['thread'],item.get('result_updated',0),'answer'))
@@ -114,10 +112,10 @@ def tick(store,owner):
         db.execute('DELETE FROM push_deliveries WHERE next_attempt<?',(now-7*86400,))
         db.execute('DELETE FROM push_previews WHERE event NOT IN (SELECT id FROM push_answers)')
     for ident,uid,raw,created in subscriptions:
-        try:allowed=workspace.permitted_threads(state,uid,owner);admin=workspace.is_owner(state,uid,owner)
+        try:allowed=workspace.permitted_threads(state,uid,owner)
         except workspace.Forbidden:continue
         for event,thread,stamp,kind in events:
-            if stamp<created or stamp<now-86400 or thread not in allowed or (kind=='approval' and not admin):continue
+            if stamp<created or stamp<now-86400 or thread not in allowed:continue
             with database(store) as db:
                 db.execute('BEGIN IMMEDIATE')
                 row=db.execute('SELECT attempts,next_attempt,done FROM push_deliveries WHERE subscription=? AND event=?',(ident,event)).fetchone()
@@ -127,9 +125,6 @@ def tick(store,owner):
             fresh=store.mutate(lambda s:s.copy())
             try:
                 if thread not in workspace.permitted_threads(fresh,uid,owner):continue
-                if kind=='approval':
-                    item=fresh['items'].get(event.split(':',1)[1])
-                    if not item or item['status']!='awaiting_approval' or item['expires']<=int(time.time()):continue
             except workspace.Forbidden:continue
             with database(store) as db:
                 if not db.execute('SELECT 1 FROM push_subscriptions WHERE id=? AND uid=?',(ident,uid)).fetchone():continue

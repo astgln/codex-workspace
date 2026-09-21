@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { WorkspaceState } from '../api';
 
-export type Section = 'threads' | 'approvals' | 'access' | 'project';
+export type Section = 'threads' | 'project';
 
 export function useWorkspaceNavigation(state: WorkspaceState | null, resetVersion: number, setError: (value: string) => void) {
   const [projectId, setProjectId] = useState('');
@@ -28,25 +28,22 @@ export function useWorkspaceNavigation(state: WorkspaceState | null, resetVersio
       const next = state.threads[0];
       setSelected(next?.id || ''); setProjectId(next?.project_id || '');
     }
-    if (state.user.role !== 'owner' && (section === 'access' || section === 'approvals')) setSection('threads');
   }, [state, selected, section]);
   useEffect(() => {
     const follow = () => {
       const current = latest.current;
       if (!current) return;
       const hash = location.hash;
-      if (hash === '#approvals' && current.user.role === 'owner') {
-        setSection('approvals'); setSidebar(false);
-      } else if (hash.startsWith('#thread=')) choose(hash.slice(8));
+      if (hash.startsWith('#thread=')) choose(hash.slice(8));
     };
     // Rebind only at authentication boundaries. Every event reads the latest
-    // granted catalog, but polling must not reapply an old notification link.
+    // current catalog, but polling must not reapply an old notification link.
     follow();
     window.addEventListener('hashchange', follow);
     return () => window.removeEventListener('hashchange', follow);
   }, [Boolean(state)]);
 
-  const projects = state?.projects || [{id:'legacy',title:'Warcraft'}];
+  const projects = state?.projects || [{id:'legacy',title:'Проект'}];
   const thread = state?.threads.find(task => task.id === selected);
   const activeProject = projects.find(project => project.id === projectId) ||
     projects.find(project => project.id === thread?.project_id) || projects[0];

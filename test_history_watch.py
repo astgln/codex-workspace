@@ -24,7 +24,7 @@ class WatchTests(unittest.TestCase):
  def test_explicit_multiple_projects_only(self):
   class API:
    def call(self,path,data):return {'threads':[]}
-  from bridge import BridgeError
+  from runtime_support import BridgeError
   with tempfile.TemporaryDirectory() as tmp:
    path=Path(tmp)/'journal';path.write_text(json.dumps({'type':'session_meta','payload':{'id':'task'}})+'\n')
    catalog={'project_id':'installation','projects':[{'id':'other'}],'threads':[{'id':'task','project_id':'other'}]}
@@ -91,7 +91,7 @@ class WatchTests(unittest.TestCase):
 
  def test_manual_sync_validates_full_scope_before_any_publication(self):
   from history_client import sync_catalog
-  from bridge import BridgeError
+  from runtime_support import BridgeError
   from unittest.mock import Mock
   api=Mock()
   catalog={'project_id':'project','threads':[

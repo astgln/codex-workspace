@@ -44,9 +44,9 @@ async def lifespan(app):
     config_path = os.environ.get('WORKSPACE_CONFIG')
     if config_path:
         config = json.loads(Path(config_path).read_text())
-        for key in ('TELEGRAM_BOT_TOKEN','OWNER_USERNAME','ALLOWED_USERNAMES','CLIENT_KEY_HASH','PROJECT_ID','PUBLIC_ORIGIN'):
+        for key in ('TELEGRAM_BOT_TOKEN','OWNER_USERNAME','CLIENT_KEY_HASH','PROJECT_ID','PUBLIC_ORIGIN'):
             os.environ[key] = config[key]
-    for key in ('TELEGRAM_BOT_TOKEN','OWNER_USERNAME','ALLOWED_USERNAMES','CLIENT_KEY_HASH','PROJECT_ID','PUBLIC_ORIGIN'):
+    for key in ('TELEGRAM_BOT_TOKEN','OWNER_USERNAME','CLIENT_KEY_HASH','PROJECT_ID','PUBLIC_ORIGIN'):
         if not os.environ.get(key):
             raise RuntimeError('Missing service configuration')
     store = Store(os.environ.get('WORKSPACE_DATA','/var/lib/codex-workspace'))
@@ -97,6 +97,7 @@ async def handle(request: Request, path: str):
         elif path.startswith('web/') and path!='web/login/config':
             uid,csrf=sessions.verify(store,request.cookies.get(sessions.COOKIE))
             sessions.check_csrf(request,csrf,os.environ['PUBLIC_ORIGIN'])
+            await run_in_threadpool(store.mutate,lambda state:workspace.is_owner(state,uid,os.environ['OWNER_USERNAME']))
             # The pure API uses an internal signed identity. Browser requests
             # authenticate only with the opaque HttpOnly cookie and CSRF token.
             event['headers']['authorization']='Workspace '+workspace.issue_session(uid,os.environ['TELEGRAM_BOT_TOKEN'],int(time.time()))

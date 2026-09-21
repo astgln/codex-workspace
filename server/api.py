@@ -29,7 +29,7 @@ def api(event, context=None, *, mutate):
         path = event.get('path', '')
         method = event.get('httpMethod')
         if path == '/health' and method == 'GET':
-            return response(200, {'status': 'ok', 'mode': 'text-owner-approval'})
+            return response(200, {'status': 'ok', 'mode': 'single-user'})
         if not authorized(event):
             return response(401, {'error': 'unauthorized'})
         body = decode(event)
@@ -104,7 +104,7 @@ def web_api(event, context=None, *, mutate):
                 login.consume_challenge(state, nonce, now)
                 if widget is not None:
                     login.consume_widget(state, widget['hash'], now)
-                return workspace.bind_user(state, user, os.environ['ALLOWED_USERNAMES'].split('|'))
+                return workspace.bind_user(state, user, owner)
             uid = mutate(authenticate)
             return response(200, {'token': workspace.issue_session(uid, secret, now), 'expires_in': workspace.SESSION_TTL})
         headers = {k.lower(): v for k, v in event.get('headers', {}).items()}
@@ -115,9 +115,6 @@ def web_api(event, context=None, *, mutate):
         routes = {
             '/web/state': lambda s: workspace.view(s, uid, owner, now),
             '/web/messages': lambda s: workspace.submit(s, uid, owner, body, now),
-            '/web/decisions': lambda s: workspace.decision(s, uid, owner, body, now),
-            '/web/member-policy': lambda s: workspace.set_member_policy(s, uid, owner, body),
-            '/web/grants': lambda s: workspace.set_grants(s, uid, owner, body),
         }
         if path not in routes:
             return response(404, {'error': 'not_found'})

@@ -7,7 +7,6 @@ import unittest
 from unittest.mock import patch, Mock
 
 from worker_dispatch import dispatch_one
-from legacy_shared_worker import dispatch_shared
 from web_client import Queue
 
 T='11111111-1111-1111-1111-111111111111'
@@ -168,69 +167,17 @@ emit({'type':'task_complete','turn_id':turn})
         self.assertEqual(self.q.pending()['messages'][0]['local_status'],'pending')
 
     def test_invalid_settings_remain_pending_without_dispatch_intent(self):
-        from bridge import BridgeError
+        from runtime_support import BridgeError
         with patch('worker_dispatch.snapshot',side_effect=BridgeError('unsupported settings')):
             result=dispatch_one(self.q,self.home,Path('/codex'),self.catalog,api=self.api)
         self.assertEqual(result,{'status':'waiting_for_tasks','requests':[{'id':-1,'reason':'task_settings_unavailable'}]})
         self.assertEqual(self.q.pending()['messages'][0]['local_status'],'pending')
         self.assertEqual(self.calls,0)
 
-    def shared(self, *, active=False, fail=False, slow=False):
-        owner=self
-        class Client:
-            def __init__(self,socket):pass
-            async def __aenter__(self):return self
-            async def __aexit__(self,*exc):pass
-            async def call(self,method,params):
-                if method in ('thread/read','thread/resume'):
-                    return {'thread':{'status':{'type':'active' if active else 'idle'}}}
-                if method=='turn/start':
-                    if fail:raise OSError('connection lost')
-                    if not slow:owner.run_cli([],input=params['input'][0]['text'])
-                    return {'turn':{'id':V}}
-                raise AssertionError(method)
-            async def wait_completed(self,thread,turn):
-                owner.assertEqual((thread,turn),(T,V))
-                if slow:raise TimeoutError()
-                return {'id':V,'status':'completed'}
-        with patch('legacy_shared_worker.snapshot',return_value=self.state):
-            return asyncio.run(dispatch_shared(self.q,self.home,self.home/'socket',self.catalog,Client,api=self.api))
 
-    def test_shared_delivers_plain_text_and_pins_turn(self):
-        self.assertEqual(self.shared()['status'],'completed')
-        row=self.q.db.execute('SELECT * FROM requests').fetchone()
-        self.assertEqual(json.loads(row['dispatch'])['turn_id'],V)
-        self.assertEqual(json.loads(row['dispatch'])['transport'],'shared')
-        self.assertEqual(self.shared()['status'],'idle')
-        self.assertEqual(self.calls,1)
-
-    def test_shared_does_not_interrupt_active_task(self):
-        self.assertEqual(self.shared(active=True)['status'],'waiting_for_tasks')
-        self.assertEqual(self.calls,0)
-        self.assertEqual(self.q.pending()['messages'][0]['local_status'],'pending')
-
-    def test_shared_disconnect_leaves_intent_without_resending(self):
-        with self.assertRaises(OSError):self.shared(fail=True)
-        self.assertEqual(self.shared()['status'],'needs_reconciliation')
-        self.assertEqual(self.calls,0)
-
-    def test_shared_slow_turn_is_collected_later_without_resubmitting(self):
-        self.assertEqual(self.shared(slow=True), {'status':'awaiting_completion','id':-1})
-        row=self.q.db.execute('SELECT * FROM requests').fetchone()
-        self.assertEqual(row['status'],'dispatched')
-        self.assertEqual(json.loads(row['dispatch'])['turn_id'],V)
-        self.assertEqual(self.shared()['status'],'needs_reconciliation')
-        self.assertEqual(self.calls,0)
-        self.run_cli([],input='$(touch SHOULD_NOT_EXIST)')
-        self.assertEqual(self.shared()['status'],'idle')
-        row=self.q.db.execute('SELECT * FROM requests').fetchone()
-        self.assertEqual(row['status'],'publishing')
-        self.assertEqual(json.loads(row['result'])['events'],[{'type':'agent_message','text':'reply'}])
-        self.assertEqual(self.calls,1)
-
-    def test_revoked_or_unverifiable_request_never_starts_cli_or_shared_turn(self):
-        from bridge import BridgeError
-        for transport in (self.dispatch,self.shared):
+    def test_revoked_or_unverifiable_request_never_starts_cli(self):
+        from runtime_support import BridgeError
+        for transport in (self.dispatch,):
             for response in ({'allowed':False},{},{'allowed':'true'}):
                 with self.subTest(transport=transport.__name__,response=response):
                     self.api.call.return_value=response

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Outbound service loop for approved requests to existing local CLI tasks."""
+"""Outbound service loop for queued requests to existing local CLI tasks."""
 import argparse
 import json
 import os

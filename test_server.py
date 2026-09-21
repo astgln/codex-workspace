@@ -16,8 +16,8 @@ class ServerTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory()
         self.env=patch.dict('os.environ',{'WORKSPACE_CONFIG':'','WORKSPACE_DATA':self.temp.name,
-            'TELEGRAM_BOT_TOKEN':'123:test-only','OWNER_USERNAME':'owner','ALLOWED_USERNAMES':'owner|friend',
-            'CLIENT_KEY_HASH':hashlib.sha256(b'collector-test-key').hexdigest(),'PROJECT_ID':'project-warcraft','PUBLIC_ORIGIN':'https://workspace.test'})
+            'TELEGRAM_BOT_TOKEN':'123:test-only','OWNER_USERNAME':'owner',
+            'CLIENT_KEY_HASH':hashlib.sha256(b'collector-test-key').hexdigest(),'PROJECT_ID':'project-example','PUBLIC_ORIGIN':'https://workspace.test'})
         self.env.start()
         self.keys=patch('cloud.login.public_keys',side_effect=RuntimeError('offline test'));self.keys.start()
         self.client=TestClient(app,base_url='https://workspace.test',headers={'Origin':'https://workspace.test'});self.client.__enter__()
@@ -59,7 +59,7 @@ class ServerTests(unittest.TestCase):
 
     def test_catalog_is_project_scoped(self):
         headers={'Authorization':'Bearer collector-test-key'}
-        body={'project_id':'project-warcraft','threads':[{'id':'thread-launcher','title':'Launcher','project_id':'project-warcraft'}]}
+        body={'project_id':'project-example','threads':[{'id':'thread-launcher','title':'Launcher','project_id':'project-example'}]}
         self.assertEqual(self.client.post('/v2/catalog',json=body,headers=headers).status_code,200)
         self.assertEqual(self.client.post('/v2/catalog',json={**body,'project_id':'other'},headers=headers).status_code,403)
         result=self.client.post('/v2/inbox/claim',json={},headers=headers)
@@ -80,7 +80,7 @@ class ServerTests(unittest.TestCase):
         self.assertNotIn('token',result.json())
         csrf=self.client.get('/auth/session').json()['csrf']
         view=self.client.post('/web/state',json={},headers={'X-CSRF-Token':csrf})
-        self.assertEqual(view.json()['user'],{'id':42,'role':'owner','requires_approval':False})
+        self.assertEqual(view.json()['user'],{'id':42})
         fresh=self.client.get('/web/login/config').json()['challenge']
         self.assertEqual(self.client.post('/web/login/session',json={**body,'challenge':fresh}).status_code,401)
         self.assertEqual(self.client.post('/web/login/session',json={**body,'id_token':'ambiguous'}).status_code,401)

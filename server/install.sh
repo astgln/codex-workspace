@@ -10,9 +10,7 @@ python3 -m venv /opt/codex-workspace/venv
 /opt/codex-workspace/venv/bin/python -m pip install --quiet --upgrade pip==26.2.1
 /opt/codex-workspace/venv/bin/pip install --quiet -r "$release/server/requirements.txt"
 python3 "$release/server/bootstrap.py" "$release/settings.json"
-if [ -f "$release/migration.json" ] && [ ! -f /var/lib/codex-workspace/workspace.sqlite3 ]; then
-    /opt/codex-workspace/venv/bin/python -c 'import json; from server.store import Store; state=json.load(open("migration.json")); Store("/var/lib/codex-workspace").mutate(lambda target: (target.clear(),target.update(state)))'
-fi
+
 chown root:codex-workspace /etc/codex-workspace /etc/codex-workspace/config.json
 chmod 750 /etc/codex-workspace
 chmod 640 /etc/codex-workspace/config.json
