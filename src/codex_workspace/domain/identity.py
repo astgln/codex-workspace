@@ -40,13 +40,10 @@ def verify_session(token, bot_token, now):
         raise Unauthorized() from None
 
 
-def bind_user(state, user, owner):
-    bound = state['bindings'].get(owner)
-    if bound is not None:
-        if user['id'] != bound:
-            raise Forbidden()
-        return bound
-    if user.get('username') != owner:
+def bind_user(state, user, allowed):
+    name = user['username']
+    if name in allowed and name not in state['bindings']:
+        state['bindings'][name] = user['id']
+    if user['id'] not in state['bindings'].values():
         raise Forbidden()
-    state['bindings'][owner] = user['id']
     return user['id']

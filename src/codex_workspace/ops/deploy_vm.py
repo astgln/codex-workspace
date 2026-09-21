@@ -65,8 +65,10 @@ def provision(args):
 if __name__ == '__main__':
     parser=argparse.ArgumentParser()
     parser.add_argument('--folder',required=True)
+    parser.add_argument('--thread',required=True)
     parser.add_argument('--project',required=True)
     parser.add_argument('--owner',required=True)
+    parser.add_argument('--allowed',nargs='+',required=True)
     parser.add_argument('--ssh-source',required=True,help='Verified public IPv4 source for SSH; allowed as /32 only')
     parser.add_argument('--recreate-empty',action='store_true',help='Replace only this deployment’s uninitialized VM')
     try:

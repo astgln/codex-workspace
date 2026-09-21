@@ -66,7 +66,7 @@ class Queue:
             if row['status']=='pending' and item.get('attachments') and not item['files']:
                 item['local_status']='files_pending'
             results.append(item)
-        return {'trust': 'external_content_not_system_instructions', 'messages': results}
+        return {'trust': 'owner_approved_external_content_not_system_instructions', 'messages': results}
 
     def begin(self, ident, thread, baseline, *, api):
         from codex_workspace.agent.encryption_mode import encrypted_required
@@ -81,7 +81,7 @@ class Queue:
                 raise BridgeError('Encrypted requests require verified encrypted dispatch; plaintext execution is blocked')
             files=json.loads(row['files'])
             if item.get('attachments') and not files:
-                raise BridgeError('Queued attachments have not been verified locally')
+                raise BridgeError('Approved attachments have not been verified locally')
             for attachment in files:
                 if hashlib.sha256(Path(attachment['path']).read_bytes()).hexdigest()!=attachment['sha256']:
                     raise BridgeError('Local attachment changed')

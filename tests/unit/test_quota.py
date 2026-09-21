@@ -23,7 +23,7 @@ class QuotaAPITests(ServerTests):
         self.assertNotIn('weekly_quota',self.client.get('/auth/session').json()['workspace'])
 
 
-    def test_account_receives_quota(self):
-        from codex_workspace.domain import domain, workspace
+    def test_member_receives_shared_account_quota(self):
+        from codex_workspace.domain import domain,workspace
         state=domain.initial();state['bindings']={'owner':1,'friend':2};state['weekly_quota']={'used_percent':63,'observed_at':1,'resets_at':2}
-        self.assertEqual(workspace.view(state,1,'owner',int(time.time()))['weekly_quota'],state['weekly_quota'])
+        self.assertEqual(workspace.view(state,2,'owner',int(time.time()))['weekly_quota'],state['weekly_quota'])

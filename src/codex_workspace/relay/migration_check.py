@@ -7,7 +7,7 @@ import sqlite3
 import tempfile
 import uuid
 
-from . import migrations, schema_legacy
+from . import migrations
 
 
 def prepare(source, backup_directory):
@@ -32,7 +32,6 @@ def prepare(source, backup_directory):
                 before = json.loads(row[0]) if row else {'bindings': {}, 'items': {}, 'seen': {}}
             else:
                 before = migrations.read_state(candidate)
-            before = schema_legacy.normalize(before)
             candidate.execute('PRAGMA foreign_keys=ON')
             migrations.migrate(candidate)
             if migrations.read_state(candidate) != before:

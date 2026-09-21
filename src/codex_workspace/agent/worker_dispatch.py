@@ -28,7 +28,7 @@ def dispatch_one(queue, home, executable, catalog, run=None, *, api, should_stop
                 continue
             args = command(executable,state)
         except (BridgeError,OSError,ValueError,KeyError):
-            # One unsupported task must not stop unrelated queued requests.
+            # One unsupported task must not stop unrelated approved requests.
             # No dispatch intent is created until settings can be preserved.
             waiting.append({'id':item['id'],'reason':'task_settings_unavailable'})
             continue

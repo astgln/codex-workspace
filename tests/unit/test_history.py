@@ -17,7 +17,7 @@ class HistoryTests(unittest.TestCase):
 
     def tearDown(self):self.temp.cleanup()
 
-    def call(self,action,body,uid=10,collector=False):return history.handle(self.store,uid,'owner',action,body,collector)
+    def call(self,action,body,uid=20,collector=False):return history.handle(self.store,uid,'owner',action,body,collector)
 
     def test_shared_history_pagination_and_revocation(self):
         self.call('read',{'thread':'shared-thread'})
@@ -28,12 +28,12 @@ class HistoryTests(unittest.TestCase):
         self.assertEqual(len(first['messages']),50)
         second=self.call('read',{'thread':'shared-thread','before':first['before']})
         self.assertEqual(len(second['messages']),10)
-        self.store.mutate(lambda s:s['bindings'].update(owner=99))
+        self.store.mutate(lambda s:s['thread_grants'].update({'20':[]}))
         with self.assertRaises(workspace.Forbidden):self.call('read',{'thread':'shared-thread'})
 
     def test_browser_cannot_publish_or_read_private_history(self):
         with self.assertRaises(workspace.Forbidden):self.call('publish',{'thread':'shared-thread','messages':[]})
-        with self.assertRaises(workspace.Forbidden):self.call('read',{'thread':'private-thread'},uid=20)
+        with self.assertRaises(workspace.Forbidden):self.call('read',{'thread':'private-thread'})
         with self.assertRaises(workspace.Forbidden):self.call('publish',{'thread':'unknown','messages':[]},None,True)
 
     def test_extractor_omits_tools_reasoning_and_masks_tokens(self):
