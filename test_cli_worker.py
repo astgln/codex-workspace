@@ -75,6 +75,32 @@ class WorkerTests(unittest.TestCase):
         collect(self.q,self.home,row,include_running=True)
         self.assertEqual(self.q.db.execute('SELECT revision FROM requests').fetchone()[0],revision)
 
+    def test_real_child_process_publishes_running_then_completed(self):
+        import sys
+        from queue_transport import publish_results
+        script=self.home/'fake_cli.py'
+        script.write_text("""import json,sys,time
+path,thread,turn=sys.argv[1:]
+prompt=sys.stdin.read()
+def emit(item):
+ with open(path,'a') as out:
+  out.write(json.dumps({'type':'event_msg','payload':item})+'\\n')
+emit({'type':'item_completed','thread_id':thread,'turn_id':turn,'item':{'type':'UserMessage','id':'u','content':[{'type':'text','text':prompt}]}})
+time.sleep(5.2)
+emit({'type':'item_completed','thread_id':thread,'turn_id':turn,'item':{'type':'AgentMessage','id':'a','phase':'final_answer','content':[{'type':'Text','text':'done'}]}})
+emit({'type':'task_complete','turn_id':turn})
+""")
+        args=[sys.executable,str(script),str(self.path),T,V]
+        with patch('worker_dispatch.snapshot',return_value=self.state),patch('worker_dispatch.command',return_value=args):
+            result=dispatch_one(self.q,self.home,Path('/unused'),self.catalog,api=self.api)
+        publish_results(self.q,self.api)
+        self.assertEqual(result['status'],'completed')
+        responses=[call.args[1] for call in self.api.call.call_args_list if call.args[0]=='/v2/responses']
+        self.assertEqual(responses[0]['status'],'running')
+        self.assertEqual(responses[-1]['status'],'completed')
+        self.assertTrue(all(response['turn_id']==V for response in responses))
+        self.assertEqual(self.q.db.execute('SELECT status FROM requests').fetchone()[0],'complete')
+
     def test_success_is_correlated_and_not_repeated(self):
         self.assertEqual(self.dispatch()['status'],'completed')
         self.assertEqual(self.dispatch()['status'],'idle')
