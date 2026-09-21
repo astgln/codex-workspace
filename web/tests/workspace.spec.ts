@@ -23,7 +23,7 @@ async function fixture(page: Page, role: 'owner'|'member' = 'owner') {
     if(path==='/web/login/config')output={client_id:'123',nonce:'test-nonce',challenge:'test-challenge'};
     else if(path==='/web/login/session'){loggedIn=true;output={ok:true};}
     else if(path==='/web/state')output=state;
-    else if(path==='/web/diagnostics')output={collector_recent:true,collector_seen:1,history_synced:1,queue:{awaiting_approval:0,approved:2},completed:5,notifications:{devices:1,retrying:0,uncertain:1}};
+    else if(path==='/web/diagnostics')output={worker:{status:'waiting_for_tasks',observed_at:1,waiting:{desktop_writer_lock:2,task_settings_unavailable:1},unresolved:3},collector_recent:true,collector_seen:1,history_synced:1,queue:{awaiting_approval:0,approved:2},completed:5,notifications:{devices:1,retrying:0,uncertain:1}};
     else if(path==='/web/push/config')output={public_key:'test-key'};
     else if(path==='/web/history')output={messages:[],before:null,synced_at:1,loading_older:false,pending:false};
     else if(path==='/web/messages'){
@@ -386,6 +386,8 @@ test('owner diagnostics shows service counters',async({page})=>{
  await fixture(page);
  await page.getByText('Состояние сервиса',{exact:true}).click();
  await expect(page.getByText('Обработчик на связи',{exact:true})).toBeVisible();
+ await expect(page.getByText('Занятых задач: 2',{exact:false})).toBeVisible();
+ await expect(page.getByText('Требуют сверки: 3',{exact:false})).toBeVisible();
  await expect(page.getByText('Неопределённые отправки не повторяются автоматически.',{exact:false})).toBeVisible();
 });
 

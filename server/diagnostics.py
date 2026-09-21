@@ -30,4 +30,4 @@ def inspect(store, uid, owner):
         return {'observed_at':now, 'schema':db.execute('PRAGMA user_version').fetchone()[0],
                 'collector_seen':seen, 'collector_recent':isinstance(seen,(int,float)) and 0<=now-seen<600,
                 'catalog_updated':state.get('catalog_updated'), 'history_synced':history,
-                'queue':queue, 'completed':completed, 'notifications':notifications}
+                'worker':state.get('worker_status'), 'queue':queue, 'completed':completed, 'notifications':notifications}

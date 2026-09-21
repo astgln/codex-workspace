@@ -12,6 +12,7 @@ from workspace_client import API, STATE
 from local_queue import Queue
 from worker_dispatch import dispatch_one
 from worker_lifecycle import shutdown_event
+from worker_health import publish as publish_health
 
 
 def main():
@@ -50,6 +51,7 @@ def serve(args, home, stop):
                     queue.tick(api)
                     result=dispatch_one(queue,home,args.codex,catalog,api=api,should_stop=stop.is_set)
                     queue.tick(api)
+                    publish_health(api, result)
                 finally:
                     queue.db.close()
             status_path=args.state/'cli-worker-status.json'

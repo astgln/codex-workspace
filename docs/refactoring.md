@@ -350,3 +350,14 @@ CLI one-shot runs return nonzero for either category. Successful history offsets
 still persist during partial passes. Idle refresh requests retry on a later pass.
 The full Python suite passes 194 tests, including transport failure and malformed
 response cases with successful history and quota publication in the same pass.
+
+## Collector waiting diagnostics
+
+The authenticated collector publishes a bounded aggregate after each completed
+pass through `/v2/worker/status`. The server rejects extra fields and stores only
+a status enum, two waiting counters, unresolved count and server receipt time.
+Only owner diagnostics return it; ordinary workspace responses omit the record.
+The UI labels it as the last pass, not proof of a currently idle process during
+a long CLI execution. Diagnostic publication failures cannot mutate queue intent
+or trigger redispatch. The full Python suite (217 collected cases, including
+inherited API tests), production build and two targeted browser checks pass.
