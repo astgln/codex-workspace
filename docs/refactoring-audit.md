@@ -17,7 +17,7 @@ Counts alone do not establish end-to-end acceptance.
 | Separate queue and preserve execution rights | local_queue.py, queue_transport.py, queue_downloads.py, cli_session.py, worker_execution.py | Durable intent, checksums, original settings and no shell interpolation; archived recovery markers accepted without reactivating old transports |
 | Correlate response and recover uncertainty | worker_recovery.py, worker_dispatch.py, rollout_response.py, queue tests and real-child fixture | Exact new-turn correlation and no automatic redispatch; journal failures are isolated per retained request (see recovery checkpoint below) |
 | Independent history/quota | history_sync.py, history_watch.py, versioned rollout reader, tests and fresh live checkpoint | Changed journals and quota retries survive individual-task and pending-endpoint failures |
-| Autonomous catalog and desktop activity | generated local protocol schema, read-only daemon probe, exact database/catalog comparison | Incomplete: no accessible authoritative catalog source; static task activity also needs reconciliation independent of request result status |
+| Autonomous catalog and desktop activity | desktop_catalog.py, lifecycle checkpoints, writer-lock probe and live 22-task comparison | Implemented via read-only desktop persistence; see limitations and live verification below |
 | Decompose frontend | API domain files; session/navigation/composer hooks; conversation/login/access/project components | Stateful boundaries extracted; sidebar/header still composed in App, without requiring another runtime framework |
 | Preserve shared history, quota, scroll and PWA | history policy/reader tests; browser regression suite; live history count | Automatic behavior covered; live participant and installed iPhone tests remain separate |
 | Deduplicate private notifications | push tests and intent-before-I/O implementation | Turn identity shared across response/history; uncertain sends not retried; provider mocks/encryption tests are not device delivery |
@@ -34,21 +34,16 @@ The request service's actual report was idle with zero waiting/unresolved counts
 Both local launchd services were running and their checkpoints were fresh.
 These are point-in-time observations, not continuous availability guarantees.
 
-## Remaining work, without narrowing the goal
+## Remaining acceptance work
 
-1. Verify recovery behavior in future real uncertainty incidents; automatic tests
-   now cover isolated missing/malformed journals without resubmission.
-2. Reconcile ordinary desktop task activity independently of the static catalog.
-   Do not equate a stored active label or an old final message with a live process.
-3. Obtain an accessible authoritative project/task catalog source. Preserve exact
-   app project identity; do not infer grants from cwd or replace the working
-   catalog with the mismatched local state database.
-4. Complete real participant login, scoped access, approval and attachment round
-   trip, plus installed iPhone permission and delivery of approval/answer pushes.
-5. Re-audit the full objective after the above changes, including deployed state.
+Complete real participant login, scoped access, approval and attachment round
+trip, plus installed iPhone permission and delivery of approval/answer pushes.
+Both testers remain unavailable. These checks remain explicit completion gates;
+automated tests do not replace them. After those checks, re-audit deployed state
+against the whole objective. The goal remains incomplete until then.
 
-The catalog limitation and external acceptance do not prevent work on recovery
-isolation or activity reconciliation. The goal therefore remains active.
+Autonomous catalog discovery and turn-activity reconciliation, previously listed
+as blockers here, are now implemented and verified as described below.
 
 ## Recovery isolation checkpoint
 
