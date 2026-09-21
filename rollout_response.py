@@ -70,6 +70,7 @@ def recover_cli(path, thread, prompt, baseline, *, include_running=False):
     matched = set()
     finals = {}
     completed = set()
+    aborted = set()
     identity = False
     after_baseline = baseline is None
     with path.open() as stream:
@@ -86,10 +87,12 @@ def recover_cli(path, thread, prompt, baseline, *, include_running=False):
             if record.get('type') != 'event_msg':
                 continue
             turn = payload.get('turn_id')
-            if turn == baseline and payload.get('type') in ('task_started', 'task_complete'):
+            if turn == baseline and payload.get('type') in ('task_started', 'task_complete', 'turn_aborted'):
                 after_baseline = True
             if payload.get('type') == 'task_complete':
                 completed.add(turn)
+            if payload.get('type') == 'turn_aborted':
+                aborted.add(turn)
             if payload.get('type') != 'item_completed' or payload.get('thread_id') != thread:
                 continue
             item = payload.get('item', {})
@@ -112,6 +115,11 @@ def recover_cli(path, thread, prompt, baseline, *, include_running=False):
     turn = next(iter(matched))
     if not isinstance(turn, str) or not UUID.fullmatch(turn) or turn == baseline:
         raise BridgeError('CLI input is not a new identified turn')
+    if turn in aborted:
+        if turn in completed:
+            raise BridgeError('Conflicting terminal records; reconciliation required')
+        return {'thread':thread, 'turn_id':turn, 'status':'failed', 'events':[
+            {'type':'error', 'message':'Выполнение запроса прервано в Codex.', 'severity':'warning'}]}
     if turn not in completed or not finals.get(turn):
         if include_running and turn not in completed:
             return {'thread':thread,'turn_id':turn,'status':'running','events':[]}

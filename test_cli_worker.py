@@ -73,6 +73,25 @@ class WorkerTests(unittest.TestCase):
     def test_invalid_recovery_journal_does_not_block_independent_task(self):
         self.check_unavailable_recovery('{not valid JSON}\n')
 
+    def test_aborted_request_is_published_once_without_redispatch(self):
+        from queue_transport import publish_results
+        def abort(args, **kwargs):
+            self.calls+=1
+            with self.path.open('a') as out:
+                for payload in (
+                    {'type':'item_completed','thread_id':T,'turn_id':V,'item':{'type':'UserMessage','id':'u','content':[{'type':'text','text':kwargs['input']}]}},
+                    {'type':'turn_aborted','turn_id':V,'reason':'private detail'}):
+                    out.write(json.dumps({'type':'event_msg','payload':payload})+'\n')
+            return SimpleNamespace(returncode=1)
+        self.assertEqual(self.dispatch(abort)['status'],'completed')
+        publish_results(self.q,self.api)
+        row=self.q.db.execute('SELECT * FROM requests WHERE id=-1').fetchone()
+        self.assertEqual(row['status'],'complete')
+        self.assertEqual(json.loads(row['result'])['status'],'failed')
+        self.assertNotIn('private detail',row['result'])
+        self.assertEqual(self.dispatch()['status'],'idle')
+        self.assertEqual(self.calls,1)
+
     def test_stop_after_preflight_creates_no_dispatch_intent(self):
         with patch('worker_dispatch.snapshot',return_value=self.state), patch('worker_dispatch.command',return_value=['codex']):
             result=dispatch_one(self.q,self.home,Path('/codex'),self.catalog,api=self.api,should_stop=lambda:True)

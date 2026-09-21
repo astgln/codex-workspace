@@ -59,3 +59,17 @@ for the same task and an independent valid task, then perform repeated passes:
 only the independent task executes once; original intent is unchanged and the
 same-task request remains pending. Missing and malformed journals are covered.
 The full suite passes 219 collected Python cases.
+
+## Explicit aborted turns
+
+Journal inspection confirmed `turn_aborted` records carry exact turn identity.
+Recovery now accepts this as terminal failure only after matching the approved
+prompt to one new turn after baseline in the correct task. A fixed public error
+replaces internal abort reason/details. Conflicting completed/aborted records
+remain unresolved. Queue publication closes a failed result without redispatch.
+Tests cover another turn's abort, conflicting terminal records, withheld private
+reason and repeated recovery after abort publication. Full suite: 223 cases.
+
+Lifecycle records alone still do not prove current process liveness after a crash;
+a stored task_started is not sufficient for authoritative live activity. Real
+member and iPhone checks remain unavailable according to the owner's latest reply.

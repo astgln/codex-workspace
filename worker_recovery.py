@@ -20,11 +20,11 @@ def collect(queue, home, row, *, include_running=False):
     if row['result']:
         previous = json.loads(row['result'])
         if previous['status'] == reply['status'] and previous['events'] == reply['events']:
-            return reply['status'] == 'completed'
+            return reply['status'] in ('completed', 'failed')
     if row['status'] == 'dispatching':
         queue.sent(row['id'],dispatch['marker'])
     queue.publish(row['id'],{**reply,'marker':dispatch['marker']})
-    return reply['status'] == 'completed'
+    return reply['status'] in ('completed', 'failed')
 
 
 def request_text(request):

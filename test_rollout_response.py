@@ -78,3 +78,22 @@ class RolloutTests(unittest.TestCase):
         self.assertIsNone(self.cli_result(rows))
         rows=self.cli_rows();rows[2]['payload']['item']['type']='FunctionCallOutput'
         self.assertIsNone(self.cli_result(rows))
+
+    def test_cli_aborted_exact_turn_is_terminal_without_private_reason(self):
+        rows=self.cli_rows()[:-1]
+        rows.append({'type':'event_msg','payload':{'type':'turn_aborted','turn_id':U,'reason':'PRIVATE'}})
+        result=self.cli_result(rows)
+        self.assertEqual(result['status'],'failed')
+        self.assertEqual(result['turn_id'],U)
+        self.assertNotIn('PRIVATE',str(result))
+        self.assertNotIn('Public answer',str(result))
+        self.assertEqual(len(result['events']),1)
+
+    def test_cli_abort_of_other_turn_is_not_completion(self):
+        rows=self.cli_rows()[:-1]
+        rows.append({'type':'event_msg','payload':{'type':'turn_aborted','turn_id':S}})
+        self.assertIsNone(self.cli_result(rows))
+
+    def test_cli_conflicting_terminal_records_require_reconciliation(self):
+        rows=self.cli_rows()+[{'type':'event_msg','payload':{'type':'turn_aborted','turn_id':U}}]
+        with self.assertRaises(BridgeError):self.cli_result(rows)
