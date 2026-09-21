@@ -10,7 +10,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install -r server/requirements.txt httpx
+      - run: pip install -r server/requirements.txt -r crypto-requirements.txt httpx
       - run: python -m unittest discover -v
   web:
     runs-on: ubuntu-latest
@@ -21,6 +21,12 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r crypto-requirements.txt
       - run: npm ci --prefix web --ignore-scripts
       - run: npm --prefix web run build
       - run: cd web && npx playwright install --with-deps chromium && npx playwright test
+        env:
+          CRYPTO_TEST_PYTHON: python

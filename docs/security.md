@@ -82,3 +82,9 @@ VM принимает SSH только с конкретного админис�
 Рекомендации для оценки: [CISA: securing remote access software](https://www.cisa.gov/resources-tools/resources/guide-securing-remote-access-software),
 [OWASP: session management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html).
 Проверка исходников и зависимостей не заменяет внешний penetration test и решение СИБ.
+
+## Работа над E2EE
+
+Криптографический протокол и локальный реестр устройств описаны в [E2EE](e2ee.md).
+Они пока не подключены к рабочим API и сборщикам. До завершения интеграции
+и миграции действуют описанные выше ограничения открытого хранения на сервере.

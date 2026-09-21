@@ -1,0 +1,2 @@
+# Trusted endpoint crypto and cross-language tests; never needed for relay decryption.
+cryptography==50.0.1
