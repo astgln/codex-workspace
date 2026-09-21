@@ -11,8 +11,8 @@ from pathlib import Path
 import sqlite3
 import sys
 import time
-from bridge import BridgeError, exclusive
-from cloud_client import API, Conflict, STATE
+from runtime_support import BridgeError, exclusive
+from workspace_client import API, Conflict, STATE
 
 
 from local_queue import Queue

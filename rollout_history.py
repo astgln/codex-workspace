@@ -5,7 +5,7 @@ Byte offsets allow a history-only process to follow growing journals cheaply.
 """
 from datetime import datetime
 import json
-from bridge import BridgeError
+from runtime_support import BridgeError
 from cloud.quota import from_record
 
 # Bump when public-record interpretation changes; checkpoints must be replayed.

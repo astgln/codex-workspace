@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Private text-only Telegram inbox for a Codex thread. Python stdlib only."""
 import argparse
-import contextlib
-import fcntl
 import json
 import os
 from pathlib import Path
@@ -14,12 +12,10 @@ import time
 import urllib.error
 import urllib.request
 
+from runtime_support import BridgeError, NoRedirect, exclusive
+
 DEFAULT_STATE = Path(__file__).resolve().parent / '.local'
 ACK = 'Сообщение получено в задаче Codex. Тест доставки и обратного ответа прошёл. Пока это проверка связи; разбор логов ещё не подключён.'
-
-
-class BridgeError(Exception):
-    pass
 
 
 class Telegram:
@@ -45,11 +41,6 @@ class Telegram:
         if not result.get('ok'):
             raise BridgeError('Telegram отклонил запрос; подробности скрыты.')
         return result['result']
-
-
-class NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, *args, **kwargs):
-        return None
 
 
 def read_token(path):
@@ -85,16 +76,6 @@ def save_config(state, value):
         json.dump(value, stream)
     temporary.chmod(0o600)
     temporary.replace(path)
-
-
-@contextlib.contextmanager
-def exclusive(state):
-    with (state / 'transport.lock').open('a') as stream:
-        try:
-            fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            raise BridgeError('Другой процесс уже получает сообщения.') from None
-        yield
 
 
 class Queue:

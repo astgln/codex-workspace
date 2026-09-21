@@ -7,7 +7,7 @@ must first verify the selected turn and its completion with Codex app tools.
 import json
 import re
 from pathlib import Path
-from bridge import BridgeError
+from runtime_support import BridgeError
 
 UUID=re.compile(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}')
 

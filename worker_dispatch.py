@@ -1,7 +1,7 @@
 """Coordinate permission preflight, durable dispatch intent and recovery."""
 import json
 import subprocess
-from bridge import BridgeError
+from runtime_support import BridgeError
 from cli_session import snapshot, command
 from worker_recovery import collect, request_text
 from worker_execution import execute

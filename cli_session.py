@@ -8,7 +8,7 @@ import json
 import os
 from pathlib import Path
 
-from bridge import BridgeError
+from runtime_support import BridgeError
 from rollout_response import UUID, locate
 
 

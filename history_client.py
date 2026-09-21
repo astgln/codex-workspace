@@ -5,8 +5,8 @@ import json
 import re
 import os
 from pathlib import Path
-from bridge import BridgeError, exclusive
-from cloud_client import API, STATE
+from runtime_support import BridgeError, exclusive
+from workspace_client import API, STATE
 
 
 def public_text(text):

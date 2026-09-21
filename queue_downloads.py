@@ -4,7 +4,7 @@ import hashlib
 import json
 import os
 import re
-from bridge import BridgeError
+from runtime_support import BridgeError
 
 
 def downloads(queue, api):

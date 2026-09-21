@@ -270,3 +270,15 @@ match uncertain push semantics and link to the current runbook. Manual history
 sync delegates to the same implementation as the service, validating the entire
 catalog before any publication and continuing unrelated tasks after journal
 failures. Its aggregate output reports partial failures with exit code 1.
+
+## Active local dependency boundary
+
+`runtime_support.py` owns the shared error, nonredirecting HTTP handler and
+transport lock. `workspace_client.py` owns the authenticated HTTPS API, endpoint
+validation and conflict type. Active request/history services and administrative
+web commands import these directly; they no longer load `bridge.py` or the old
+`cloud_client.Inbox`. Legacy imports remain aliases to preserve exception identity
+and old diagnostic tools. A subprocess test blocks all retired bot, cloud and
+shared-server modules while importing current service entrypoints. All 193 Python
+tests pass. This changes imports only; queue format, permissions and HTTP policy
+are unchanged.

@@ -1,7 +1,7 @@
 """Outbound receipts, claims and response publication; no CLI execution."""
 import json
 import time
-from cloud_client import Conflict
+from workspace_client import Conflict
 
 
 def receipts(queue, api):

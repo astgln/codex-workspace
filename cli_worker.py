@@ -7,8 +7,8 @@ from pathlib import Path
 import sys
 import time
 
-from bridge import BridgeError, exclusive
-from cloud_client import API, STATE
+from runtime_support import BridgeError, exclusive
+from workspace_client import API, STATE
 from local_queue import Queue
 from worker_dispatch import dispatch_one
 from worker_lifecycle import shutdown_event

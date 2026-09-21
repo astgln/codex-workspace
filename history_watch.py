@@ -8,8 +8,8 @@ import json
 import os
 from pathlib import Path
 import time
-from bridge import BridgeError, exclusive
-from cloud_client import API, STATE
+from runtime_support import BridgeError, exclusive
+from workspace_client import API, STATE
 from history_sync import sync_once
 
 

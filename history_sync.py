@@ -1,5 +1,5 @@
 """Independent history checkpoints and retryable quota publication."""
-from bridge import BridgeError
+from runtime_support import BridgeError
 from history_client import publish
 from rollout_history import read_public, READER_VERSION
 from rollout_response import locate

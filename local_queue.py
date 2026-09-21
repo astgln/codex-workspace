@@ -3,7 +3,7 @@ import hashlib
 import json
 from pathlib import Path
 import sqlite3
-from bridge import BridgeError
+from runtime_support import BridgeError
 import queue_downloads
 import queue_transport
 

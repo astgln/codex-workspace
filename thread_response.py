@@ -3,7 +3,7 @@
 Input comes from the authorized read_thread tool. Never read Codex's databases
 or export a thread's old turns as a substitute for an absent response.
 """
-from bridge import BridgeError
+from runtime_support import BridgeError
 
 
 def prompt_prefix(marker):
