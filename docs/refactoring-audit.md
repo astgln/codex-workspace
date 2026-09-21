@@ -36,14 +36,16 @@ These are point-in-time observations, not continuous availability guarantees.
 
 ## Remaining acceptance work
 
-Complete real participant login, scoped access, approval and attachment round
-trip, plus installed iPhone permission and delivery of approval/answer pushes.
-Both testers remain unavailable. These checks remain explicit completion gates;
-automated tests do not replace them. After those checks, re-audit deployed state
-against the whole objective. The goal remains incomplete until then.
+The owner has confirmed installed iPhone navigation and notification delivery.
+The later request for message previews was implemented and deployed; observation
+of that new presentation on the phone is still pending. The brother's real login,
+scoped access, approval and attachment round trip remain unverified. Automated
+tests do not replace these actions. The full goal is not yet complete.
 
 Autonomous catalog discovery and turn-activity reconciliation, previously listed
-as blockers here, are now implemented and verified as described below.
+as blockers here, are implemented and verified as described below. Subsequent
+entries record historical checkpoints; their older device/source limitations
+are superseded by the explicit acceptance follow-ups at the end of this audit.
 
 ## Recovery isolation checkpoint
 
