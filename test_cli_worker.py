@@ -48,6 +48,31 @@ class WorkerTests(unittest.TestCase):
         with patch('worker_dispatch.snapshot',return_value=self.state),patch('worker_dispatch.command',return_value=['codex','exec','resume',T,'-']):
             return dispatch_one(self.q,self.home,Path('/codex'),self.catalog,run or self.run_cli,api=self.api)
 
+    def check_unavailable_recovery(self, journal_text=None):
+        self.q.receive({'id':-2,'thread':U,'text':'old uncertain request','snapshot':'b'*64})
+        self.q.receive({'id':-3,'thread':U,'text':'later same task','snapshot':'c'*64})
+        old={'thread':U,'baseline':T,'marker':'old-marker','transport':'cli','prompt':'old uncertain request'}
+        with self.q.db:
+            self.q.db.execute("UPDATE requests SET status='dispatching',dispatch=? WHERE id=-2",(json.dumps(old),))
+            self.q.db.execute("UPDATE requests SET status='pending' WHERE id=-3")
+        if journal_text is not None:
+            (self.path.parent/f'rollout-test-{U}.jsonl').write_text(journal_text)
+        self.assertEqual(self.dispatch()['status'],'completed')
+        self.assertEqual(self.calls,1)
+        self.assertEqual(self.dispatch(),{'status':'needs_reconciliation','ids':[-2]})
+        self.assertEqual(self.calls,1)
+        row=self.q.db.execute('SELECT * FROM requests WHERE id=-2').fetchone()
+        self.assertEqual(row['status'],'dispatching')
+        self.assertEqual(json.loads(row['dispatch']),old)
+        self.assertIsNone(row['result'])
+        self.assertEqual(self.q.db.execute('SELECT status FROM requests WHERE id=-3').fetchone()[0],'pending')
+
+    def test_missing_recovery_journal_does_not_block_independent_task(self):
+        self.check_unavailable_recovery()
+
+    def test_invalid_recovery_journal_does_not_block_independent_task(self):
+        self.check_unavailable_recovery('{not valid JSON}\n')
+
     def test_stop_after_preflight_creates_no_dispatch_intent(self):
         with patch('worker_dispatch.snapshot',return_value=self.state), patch('worker_dispatch.command',return_value=['codex']):
             result=dispatch_one(self.q,self.home,Path('/codex'),self.catalog,api=self.api,should_stop=lambda:True)

@@ -15,7 +15,7 @@ Counts alone do not establish end-to-end acceptance.
 | Verify deployment and restoration | release_vm.py digest checks; installer rehearses backup/migrate/legacy restore before symlink switch | Implemented and exercised by releases; migration tests cover rollback/interruption/post-migration data, not general disaster recovery of the whole VM |
 | Central access and approval | access.py and API/browser tests | Owner, project/task grants, task deny precedence, owner autoapproval and member policy covered automatically; real second-member acceptance absent |
 | Separate queue and preserve execution rights | local_queue.py, queue_transport.py, queue_downloads.py, cli_session.py, worker_execution.py | Durable intent, checksums, original settings and no shell interpolation; archived recovery markers accepted without reactivating old transports |
-| Correlate response and recover uncertainty | worker_recovery.py, worker_dispatch.py, rollout_response.py, queue tests and real-child fixture | Exact new-turn correlation and no automatic redispatch; recovery loop still needs isolation when one retained request's journal raises an error |
+| Correlate response and recover uncertainty | worker_recovery.py, worker_dispatch.py, rollout_response.py, queue tests and real-child fixture | Exact new-turn correlation and no automatic redispatch; journal failures are isolated per retained request (see recovery checkpoint below) |
 | Independent history/quota | history_sync.py, history_watch.py, versioned rollout reader, tests and fresh live checkpoint | Changed journals and quota retries survive individual-task and pending-endpoint failures |
 | Autonomous catalog and desktop activity | generated local protocol schema, read-only daemon probe, exact database/catalog comparison | Incomplete: no accessible authoritative catalog source; static task activity also needs reconciliation independent of request result status |
 | Decompose frontend | API domain files; session/navigation/composer hooks; conversation/login/access/project components | Stateful boundaries extracted; sidebar/header still composed in App, without requiring another runtime framework |
@@ -36,8 +36,8 @@ These are point-in-time observations, not continuous availability guarantees.
 
 ## Remaining work, without narrowing the goal
 
-1. Isolate journal/recovery failures per retained request, preserving uncertain
-   intent and allowing unrelated authorized tasks to continue.
+1. Verify recovery behavior in future real uncertainty incidents; automatic tests
+   now cover isolated missing/malformed journals without resubmission.
 2. Reconcile ordinary desktop task activity independently of the static catalog.
    Do not equate a stored active label or an old final message with a live process.
 3. Obtain an accessible authoritative project/task catalog source. Preserve exact
@@ -49,3 +49,13 @@ These are point-in-time observations, not continuous availability guarantees.
 
 The catalog limitation and external acceptance do not prevent work on recovery
 isolation or activity reconciliation. The goal therefore remains active.
+
+## Recovery isolation checkpoint
+
+`worker_recovery.collect` now treats recognized journal read/format failures as
+an unresolved result before any queue mutation. Database/queue transition errors
+are not swallowed. Tests retain an uncertain request, enqueue a later request
+for the same task and an independent valid task, then perform repeated passes:
+only the independent task executes once; original intent is unchanged and the
+same-task request remains pending. Missing and malformed journals are covered.
+The full suite passes 219 collected Python cases.
