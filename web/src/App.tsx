@@ -1,24 +1,22 @@
 /* Workspace shell adapted from LuSeptem/codex-webui AppShell; MIT notice in licenses/. */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, ChevronRight, Circle, Folder, Inbox, LogOut, Menu, MessageSquare, Moon, Download, RefreshCw, ShieldCheck, Sun, X } from 'lucide-react';
-import { Markdown } from './components/events/Markdown';
+import { ChevronDown, ChevronRight, Circle, Folder, Inbox, LogOut, Menu, MessageSquare, Moon, RefreshCw, ShieldCheck, Sun, X } from 'lucide-react';
 import { DiffViewerDialog } from './components/diff/DiffViewerDialog';
 import { useThreadHistory } from './History';
 import { useConversationScroll } from './ConversationScroll';
 import {PushSettings,disablePush} from './PushSettings';
 import { Toaster } from './components/ui/Toaster';
 import type { FileChangeItem } from './types/api';
-import { ApiError, decide, fetchState, login, prepareLogin, restoreSession, signOut, downloadFile } from './api';
+import { ApiError, fetchState, login, prepareLogin, restoreSession, signOut } from './api';
 import type { WorkspaceState } from './api';
-const statusLabels:Record<string,string>={awaiting_approval:'Ожидает одобрения',approved:'Ожидает Codex',delivered:'Передано в Codex',rejected:'Отклонено',expired:'Истёк срок одобрения',target_unavailable:'Тред недоступен',superseded:'Заменено новой версией',running:'Codex работает',completed:'Ответ готов',failed:'Ошибка обработки',needs_input:'Нужен ответ'};
 
 import { AccessPanel } from './workspace/AccessPanel';
 import { ProjectPanel } from './workspace/ProjectPanel';
-import { PublicEvent } from './workspace/PublicEvent';
 import { Diagnostics } from './workspace/Diagnostics';
 import { Composer } from './workspace/Composer';
 import { useComposer } from './workspace/useComposer';
-import { RequestActivity } from './workspace/RequestActivity';
+import { LoginPage } from './workspace/LoginPage';
+import { Conversation } from './workspace/Conversation';
 
 export function App(){
  const [checking,setChecking]=useState(true);
@@ -50,7 +48,7 @@ export function App(){
  const enter=()=>{if(!config)return;const attempt=new AbortController();loginAttempt.current=attempt;setBusy(true);setError('');login(config,attempt.signal).then(refresh).catch(e=>{setError(e.message);setConfig(null);}).finally(()=>{setBusy(false);loginAttempt.current=null;});};
  useEffect(()=>{if(!config||busy||state)return;const timer=setTimeout(prepare,240000);return()=>clearTimeout(timer);},[config,busy,Boolean(state),prepare]);
  const logout=async()=>{setBusy(true);try{await disablePush();await signOut();setState(null);setDrafts({});setAttachments({});setSelected('');setSection('threads');submission.current=null;}catch(e){setError(e instanceof Error?e.message:'Не удалось выйти.');}finally{setBusy(false);}};
- if(!state)return <div className="login-page"><div className="login-card"><div className="brand-mark"><MessageSquare size={26}/></div><p className="eyebrow">WARCRAFT WORKSPACE</p><h1>Ваши задачи Codex.<br/>В одном окне.</h1><p className="muted">Треды, сообщения и результаты работы — с компьютера или телефона.</p><button className="primary login-button" disabled={checking||!config||busy} onClick={enter}>{checking?'Проверяем сессию…':busy?'Ожидаем Telegram…':preparing?'Загружаем вход…':'Войти через Telegram'}</button>{busy&&<div role="status" className="small muted"><p>Завершите вход в окне Telegram. Если оно не открылось, откройте этот сайт в обычном браузере.</p><button className="quiet" onClick={()=>loginAttempt.current?.abort()}>Отменить вход</button></div>}{error&&<div className="error-box" role="alert">{error}<button onClick={prepare}>Повторить</button></div>}<p className="small muted">Доступ только для приглашённых участников.<br/>Владелец задаёт доступ к задачам и порядок одобрения запросов участников.</p></div><footer>На основе Codex Web UI · Независимый проект</footer></div>;
+ if(!state)return <LoginPage checking={checking} ready={Boolean(config)} busy={busy} preparing={preparing} error={error} enter={enter} cancel={()=>loginAttempt.current?.abort()} prepare={prepare}/>;
  const owner=state.user.role==='owner';
  const direct=owner||state.user.requires_approval===false;
  const projects=state.projects||[{id:'legacy',title:'Warcraft'}];
@@ -58,8 +56,6 @@ export function App(){
  const projectThreads=state.threads.filter(t=>!t.project_id||t.project_id===activeProject?.id);
  const thread=state.threads.find(t=>t.id===selected);
  const waiting=state.messages.filter(m=>m.status==='awaiting_approval');
- const messages=(section==='approvals'?waiting:state.messages.filter(m=>m.thread===selected)).sort((a,b)=>a.created-b.created||b.id-a.id);
- const timeline=[...messages.map(value=>({kind:'request' as const,value})),...(section==='threads'?(history.page?.messages||[]).map(value=>({kind:'history' as const,value})):[])].sort((a,b)=>a.value.created-b.value.created);
  const online=state.collector_seen!==null&&Date.now()/1000-state.collector_seen<600;
  const openProject=()=>{setSection('project');setSidebar(false);setSearch('');setError('');};
  const choose=(id:string)=>{setProjectId(state.threads.find(t=>t.id===id)?.project_id||'');setSelected(id);setSection('threads');setSidebar(false);setError('');};
@@ -80,13 +76,7 @@ export function App(){
    {error&&<div className="error-banner" role="alert">{error}<button onClick={()=>setError('')} aria-label="Закрыть ошибку"><X size={16}/></button></div>}
    <main key={section} className="workspace-main" ref={scroll.ref} onScroll={scroll.onScroll} style={{overflowAnchor:'none'}}>
     {section==='project'?<ProjectPanel activeProject={activeProject} projectThreads={projectThreads} search={search} setSearch={setSearch} choose={choose} owner={owner}/>:section==='access'?<AccessPanel state={state} projects={projects} busy={busy} action={action}/>:
-     <div className="content-width conversation">{section==='threads'&&<><div className="small muted" role="status">{history.page?.synced_at?history.page.loading_older?'Загружаем прежнюю переписку…':'Общая история задачи':'Ожидаем историю из Codex…'}</div>{history.error&&<div className="error-box">{history.error}<button onClick={()=>void history.refresh()}>Повторить загрузку истории</button></div>}{history.page?.before&&<button className="quiet" disabled={history.busy} onClick={()=>void history.refresh(history.page!.before!)}>Показать более ранние сообщения</button>}</>}{timeline.length===0?<div className="empty-conversation"><MessageSquare size={32}/><h1>{section==='approvals'?'Все запросы разобраны':thread?'Начните разговор':'Выберите тред'}</h1><p className="muted">{section==='approvals'?'Новые сообщения появятся здесь для проверки.':thread?(direct?'Опишите результат теста или задайте вопрос. Запрос сразу попадёт в очередь Codex.':'Опишите результат теста или задайте вопрос. Владелец проверит запрос перед передачей в Codex.'):'Здесь появятся сообщения, отправленные через это рабочее пространство.'}</p></div>:timeline.map(entry=>entry.kind==='history'?<article className="bridge-turn" data-scroll-id={"history:"+entry.value.id} key={"history:"+entry.value.id}><div className="message-meta"><span>{entry.value.role==='assistant'?'Codex':'Участник'}</span><time>{new Date(entry.value.created*1000).toLocaleString('ru-RU')}</time></div><div className={entry.value.role==='user'?'user-bubble':'response-stream'}><Markdown>{entry.value.text}</Markdown></div></article>:(()=>{const message=entry.value;return <article className="bridge-turn" data-scroll-id={"request:"+message.id} key={"request:"+message.id}>
-       {section==='approvals'&&<div className="approval-destination"><Folder size={14}/>{state.threads.find(t=>t.id===message.thread)?.title||'Тред недоступен'}</div>}
-       <div className="message-meta"><span>{message.sender===state.user.id?'Вы':`Участник ${message.sender}`}</span><time>{new Date(message.created*1000).toLocaleString('ru-RU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</time></div>
-       <div className="user-bubble"><Markdown>{message.text}</Markdown>{message.attachments?.map(file=><button key={file.id} className="attachment-card" disabled={busy} onClick={()=>void action(()=>downloadFile(file))}><Download size={15}/><span>{file.name}</span><small>{Math.ceil(file.size/1024)} КБ</small></button>)}</div>
-       <div className={'delivery-status status-'+message.status}><span>{statusLabels[message.result_status||message.status]||message.status}</span>{owner&&message.status==='awaiting_approval'&&<div className="decision-buttons"><button disabled={busy} className="quiet" onClick={()=>void action(()=>decide(message,'rejected'))}>Отклонить</button><button disabled={busy} className="approve" onClick={()=>void action(()=>decide(message,'approved'))}><Check size={14}/>Передать в Codex</button></div>}</div>
-       <div className="response-stream">{message.events?.map((event,index)=><PublicEvent key={event.id||index} event={event} openDiff={setDiff}/>)}{section==='threads'&&<RequestActivity message={message} online={online}/>}</div>
-      </article>;})())}</div>}
+     <Conversation state={state} section={section} selected={selected} thread={thread} history={history} busy={busy} online={online} action={action} setDiff={setDiff}/>}
    </main>
    {section==='threads'&&sending===selected&&<div className="request-activity sending-activity" role="status">Отправляю…</div>}
    {section==='threads'&&thread?.read_only&&<p className="composer-note">Эта задача доступна только для чтения.</p>}

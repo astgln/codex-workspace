@@ -256,3 +256,13 @@ response retains the same turn identity and advances the response revision.
 Network/recovery failures during polling preserve the active process and durable
 intent; they never trigger a new CLI execution. Unit tests cover pre-completion
 publication, stable revisions and process polling without repeated stdin.
+
+## Conversation and login views
+
+`workspace/Conversation.tsx` owns the merged history/request timeline, attachment
+downloads, approval actions, response events and correlated activity indicator.
+`workspace/LoginPage.tsx` renders session preparation and cancellable login.
+The application shell retains session effects, navigation and the scroll container
+so extracting views does not reset reading positions or change authentication.
+The production build and all 27 browser regressions pass, including shimmer,
+reduced motion, login origin checks, approval snapshots and history anchoring.
