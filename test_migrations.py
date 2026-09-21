@@ -125,7 +125,43 @@ class MigrationTests(unittest.TestCase):
         store = Store(self.temp.name)
         with database(self.path) as db:
             state = migrations.read_state(db)
+            migrations.request_store.drop(db)
             migrations.catalog_store.drop(db)
             db.execute('PRAGMA user_version=1')
             migrations.write_state(db, state)
         self.assertEqual(Store(self.temp.name).mutate(copy.deepcopy), self.state)
+
+    def test_schema_two_preserves_delivered_request_files_and_response(self):
+        self.state['items'] = {'-1': {
+            'id': -1, 'source': 'web:20:request', 'channel': 'web', 'sender': 20,
+            'thread': 'private', 'text': 'request', 'status': 'delivered',
+            'created': 10, 'expires': 9999, 'snapshot': 'a'*64, 'lease': 'opaque-lease',
+            'lease_until': 100, 'approved_by': 10, 'decision_at': 12,
+            'result_revision': 2, 'result_status': 'completed',
+            'events': [{'type':'agent_message','text':'reply'}, {'type':'error','message':'warning','severity':'warning'}],
+            'attachments': [{'id':'file','name':'log.txt','size':3,'sha256':'b'*64}],
+        }}
+        self.state['uploads'] = {'file': {'id':'file','owner':20,'thread':'private',
+            'name':'log.txt','size':3,'sha256':'b'*64,'status':'ready','used_by':-1,
+            'request_id':'upload-nonce','created':10,'expires':9999}}
+        store = Store(self.temp.name)
+        store.mutate(lambda state: (state.clear(), state.update(copy.deepcopy(self.state))))
+        # Reconstruct a schema-2 database, the currently deployed starting point.
+        with database(self.path) as db:
+            state = migrations.read_state(db)
+            migrations.request_store.drop(db)
+            db.execute('PRAGMA user_version=2')
+            migrations.write_state(db, state)
+        store = Store(self.temp.name)
+        self.assertEqual(store.mutate(copy.deepcopy), self.state)
+        with database(self.path) as db:
+            self.assertEqual(db.execute('SELECT status,lease,result_revision FROM workspace_requests').fetchone(),
+                             ('delivered','opaque-lease',2))
+            self.assertEqual(db.execute('SELECT count(*) FROM request_events').fetchone()[0],2)
+            self.assertEqual(db.execute('SELECT used_by FROM workspace_uploads').fetchone()[0],-1)
+            residual=json.loads(db.execute('SELECT value FROM mailbox').fetchone()[0])
+            self.assertFalse({'items','uploads'} & residual.keys())
+        restored = Path(self.temp.name) / 'legacy-with-request.sqlite3'
+        migrations.restore_legacy_copy(self.path, restored)
+        with database(restored) as db:
+            self.assertEqual(json.loads(db.execute('SELECT value FROM mailbox').fetchone()[0]),self.state)

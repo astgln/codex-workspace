@@ -142,3 +142,15 @@ The migration supports schema 0 and 1, verifies state parity before commit, and
 removes catalog/project copies from the residual mailbox. The rollback copy
 reconstructs the legacy catalog alongside access state. Request and upload data
 remain in the residual mailbox pending subsequent domain migrations.
+
+## Schema 3 request checkpoint
+
+Requests and uploads now have typed relational rows, with indexes for status,
+task and upload idempotency lookup. Request attachments and response events use
+ordered child tables with foreign keys. State reconstruction preserves leases,
+approvals, delivered/completed states, response revisions and file associations.
+Existing immutable uploaded bytes stay in their directories; migration touches
+metadata only. Optional and legacy fields remain lossless. Request/upload copies
+are removed from the residual mailbox, and rollback reconstructs all domains.
+Tests cover a delivered request with a completed response and attachment through
+schema-2 upgrade and legacy restoration, in addition to existing lifecycle tests.
