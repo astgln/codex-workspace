@@ -132,3 +132,13 @@ settings locator. New cases cover cold phone layout with a simulated 59px inset,
 two-way task switching, short-screen settings access, and subscription after a
 user-activated permission tap. These are browser simulations, not verification
 of an actual iOS push delivery; the owner's device check remains open.
+
+PWA deployment follow-up: after the owner explicitly authorized direct SSH outside
+VPN, binding SSH/SCP to the existing Wi-Fi interface succeeded. No VPN or system
+route was changed. The VM's single SSH `/32` rule was updated to the verified
+direct egress address. Release `806c604d1f3bfcee` was installed with archive hash,
+migration/restore rehearsal and SSH health verification; the public site's asset
+names match the local production build. CI for `b4d9593` passed unit and all 34
+browser cases. A read-only server query found zero push subscriptions and zero
+deliveries: actual device enablement/delivery remains unverified, not a provider
+failure diagnosis.

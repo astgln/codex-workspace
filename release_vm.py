@@ -23,7 +23,9 @@ def deployment():
         owner=state['settings']['owner'],allowed=state['settings']['allowed'],project=state['project']))
 
 
-def publish(initial=False):
+def publish(initial=False, ssh_interface=None):
+    if ssh_interface is not None and not re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]{0,31}", ssh_interface):
+        raise RuntimeError("Invalid SSH interface")
     d=deployment();s=d.state
     files={}
     for directory in ('cloud','server'):
@@ -75,6 +77,8 @@ def publish(initial=False):
     known=STATE/'vm-known-hosts';known.write_text(s['vm_public_ip']+' '+keys[-1]+'\n')
     options=['-i',str(STATE/'web-vm-ed25519'),'-o','BatchMode=yes','-o','StrictHostKeyChecking=yes',
              '-o','UserKnownHostsFile='+str(known),'-o','ConnectTimeout=15']
+    if ssh_interface:
+        options += ['-o', 'BindInterface='+ssh_interface]
     host='bridge@'+s['vm_public_ip']
     def run(command):
         result=subprocess.run(command,capture_output=True,text=True)
@@ -123,9 +127,10 @@ def gateway(cutover=False):
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('action',choices=['publish','probe','cutover']);parser.add_argument('--initial-migration',action='store_true')
+    parser.add_argument('--ssh-interface',help='Bind SSH/SCP to an existing interface; does not modify routes')
     args=parser.parse_args()
     try:
-        if args.action=='publish':publish(args.initial_migration)
+        if args.action=='publish':publish(args.initial_migration,args.ssh_interface)
         else:gateway(args.action=='cutover')
     except Exception as exc:
         print('VM release stopped:',str(exc) if isinstance(exc,RuntimeError) else type(exc).__name__)

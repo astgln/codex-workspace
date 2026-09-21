@@ -155,3 +155,11 @@ Explicit retryable provider responses use bounded backoff, and expired
 subscriptions are removed. History and request publications share turn identity
 to avoid duplicate answer notifications when both report the same turn. Provider acceptance is not proof of delivery to a phone. Test
 actual installed iOS delivery separately, including when the app is closed.
+
+Для явно разрешённого подключения через отдельный существующий интерфейс можно
+использовать `python3 release_vm.py publish --ssh-interface en0` (имя интерфейса
+нужно проверить на своей машине). Параметр передаёт `BindInterface` одинаково в
+SSH и SCP; VPN, таблица маршрутов и конфигурация SSH не изменяются. Правило SSH
+на VM должно разрешать подтверждённый исходящий адрес этого соединения `/32`.
+Параметр не изменяет облачные правила автоматически и не отключает проверку
+ключа сервера.
