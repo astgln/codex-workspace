@@ -62,8 +62,9 @@ def sync_catalog(api, catalog, project, root):
     # Import lazily: history_sync uses this module's public-message adapter.
     from history_sync import sync_once
     failures = {}
-    count = sync_once(api, catalog, project, root, {}, failures)
-    return {'messages': count, 'failed_tasks': len(failures)}
+    service_failures = {}
+    count = sync_once(api, catalog, project, root, {}, failures, service_failures)
+    return {'messages': count, 'failed_tasks': len(failures), 'failed_services': sorted(service_failures)}
 
 
 def main():
@@ -83,7 +84,7 @@ def main():
             else:
                 result=api.call('/v2/history/pending',{}) if args.command=='pending' else publish(api,json.loads(args.file.read_text()),args.mode)
         print(json.dumps(result,ensure_ascii=False))
-        if result.get('failed_tasks'):
+        if result.get('failed_tasks') or result.get('failed_services'):
             raise SystemExit(1)
     except (BridgeError,OSError,ValueError,KeyError):
         raise SystemExit('History sync failed; content and credentials hidden')

@@ -340,3 +340,13 @@ reapply an old notification link after manual navigation. Revoked task selection
 falls back to an available task, and member links cannot open owner sections.
 Production build and all 32 browser scenarios pass (the new regression was rerun
 after waiting for catalog refresh explicitly in its fixture).
+
+## Pending-refresh failure isolation
+
+The optional history pending-refresh endpoint no longer gates changed-journal
+publication or retained quota retries. Network errors and malformed pending
+responses produce `failed_services: ["pending"]`, separate from task failures;
+CLI one-shot runs return nonzero for either category. Successful history offsets
+still persist during partial passes. Idle refresh requests retry on a later pass.
+The full Python suite passes 194 tests, including transport failure and malformed
+response cases with successful history and quota publication in the same pass.

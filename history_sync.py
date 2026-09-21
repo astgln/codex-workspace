@@ -31,14 +31,26 @@ def sync_thread(api, ident, root, cache, pending):
     return sum(len(turn['items']) for turn in read['turns'])
 
 
-def sync_once(api, catalog, project, root, cache, failures=None):
+def sync_once(api, catalog, project, root, cache, failures=None, service_failures=None):
     failures = failures if failures is not None else {}
+    service_failures = service_failures if service_failures is not None else {}
     projects = {p['id'] for p in catalog.get('projects', [{'id':project}])}
     threads = catalog.get('threads', [])
     # Validate the entire scope before publishing any task, even on partial passes.
     if catalog.get('project_id') != project or any(t.get('project_id') not in projects for t in threads):
         raise BridgeError('Project mismatch')
-    pending = {t['thread'] for t in api.call('/v2/history/pending', {}).get('threads', [])}
+    pending = set()
+    try:
+        response = api.call('/v2/history/pending', {})
+        entries = response.get('threads') if isinstance(response, dict) else None
+        if not isinstance(entries, list) or any(not isinstance(item, dict) or
+                not isinstance(item.get('thread'), str) for item in entries):
+            raise ValueError('Invalid pending history response')
+        pending = {item['thread'] for item in entries}
+    except RECOVERABLE:
+        # This endpoint only asks for refreshes of otherwise idle journals.
+        # Its failure must not suppress changed journals or retained quota retries.
+        service_failures['pending'] = 'pending_unavailable'
     count = 0
     for thread in threads:
         ident = thread['id']

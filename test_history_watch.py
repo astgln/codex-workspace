@@ -111,5 +111,30 @@ class WatchTests(unittest.TestCase):
    catalog={'project_id':'project','threads':[{'id':name,'project_id':'project'} for name in ('missing','good')]}
    with patch('history_sync.locate',side_effect=lambda root,ident:root/ident),patch('history_sync.publish') as publish:
     result=sync_catalog(API(),catalog,'project',root)
-   self.assertEqual(result,{'messages':0,'failed_tasks':1})
+   self.assertEqual(result,{'messages':0,'failed_tasks':1,'failed_services':[]})
    publish.assert_called_once()
+
+ def test_pending_failure_does_not_starve_history_or_quota(self):
+  class API:
+   def __init__(self,response):self.response=response;self.calls=[]
+   def call(self,path,data):
+    self.calls.append(path)
+    if path.endswith('/pending'):
+     if isinstance(self.response,Exception):raise self.response
+     return self.response
+    return {}
+  for response in (OSError('offline'),None,{'threads':None},{'threads':[{}]}):
+   with self.subTest(response=type(response).__name__), tempfile.TemporaryDirectory() as tmp:
+    root=Path(tmp);path=root/'task';path.write_text('fixture')
+    catalog={'project_id':'project','threads':[{'id':'task','project_id':'project'}]}
+    quota={'used_percent':12,'resets_at':9999,'observed_at':100}
+    cache={};failures={};services={};api=API(response)
+    read={'thread':{'id':'task'},'turns':[],'source_offset':path.stat().st_size,'weekly_quota':quota}
+    with patch('history_sync.locate',return_value=path),patch('history_sync.read_public',return_value=read),patch('history_sync.publish') as publish:
+     sync_once(api,catalog,'project',root,cache,failures,services)
+    publish.assert_called_once()
+    self.assertEqual(failures,{})
+    self.assertEqual(services,{'pending':'pending_unavailable'})
+    self.assertEqual(cache['task']['offset'],path.stat().st_size)
+    self.assertNotIn('pending_quota',cache['task'])
+    self.assertIn('/v2/usage',api.calls)

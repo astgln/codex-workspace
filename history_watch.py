@@ -38,14 +38,16 @@ def main():
                 catalog = json.loads(args.catalog.read_text())
                 cache = json.loads(cache_path.read_text()) if cache_path.exists() else {}
                 failures = {}
-                count = sync_once(API(config), catalog, config['project_id'], root, cache, failures)
+                service_failures = {}
+                count = sync_once(API(config), catalog, config['project_id'], root, cache, failures, service_failures)
                 temp = cache_path.with_suffix('.tmp')
                 temp.write_text(json.dumps(cache));temp.replace(cache_path)
-                if count or args.once or bool(failures) != previous_error:
-                    print(json.dumps({'status':'partial' if failures else 'synced',
-                                      'messages':count,'failed_tasks':len(failures)}), flush=True)
-                previous_error = bool(failures)
-                if args.once and failures:
+                partial = bool(failures or service_failures)
+                if count or args.once or partial != previous_error:
+                    print(json.dumps({'status':'partial' if partial else 'synced',
+                                      'messages':count,'failed_tasks':len(failures),'failed_services':sorted(service_failures)}), flush=True)
+                previous_error = partial
+                if args.once and partial:
                     raise SystemExit(1)
             except (BridgeError, OSError, ValueError, KeyError):
                 if not previous_error:
