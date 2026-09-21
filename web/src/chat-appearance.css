@@ -1,34 +1,50 @@
 /* Conversation-first layout. Shared by the personal and experimental editions. */
+/* Neutral chat palette; semantic status colours remain distinct. */
 :root {
-  --background: 0 0% 100%;
-  --surface: 0 0% 97%;
-  --surface-2: 0 0% 95%;
-  --foreground: 0 0% 13%;
-  --muted-foreground: 0 0% 43%;
-  --border: 0 0% 87%;
-  --border-subtle: 0 0% 92%;
+  --background: 0 0% 100%; /* #ffffff */
+  --surface: 0 0% 97.6471%; /* #f9f9f9 */
+  --surface-2: 0 0% 95.6863%; /* #f4f4f4 */
+  --foreground: 0 0% 5.098%; /* #0d0d0d */
+  --muted: 0 0% 70.5882%;
+  --muted-foreground: 0 0% 45.098%; /* #737373 */
+  --border: 0 0% 89.0196%; /* #e3e3e3 */
+  --border-subtle: 0 0% 92.549%;
+  --chat-hover: #ececec;
+  --chat-selected: #e3e3e3;
+  --chat-input: #f4f4f4;
+  --chat-focus: #737373;
+  --chat-quota: #737373;
 }
 .dark {
-  --background: 0 0% 13%;
-  --surface: 0 0% 9%;
-  --surface-2: 0 0% 19%;
-  --foreground: 0 0% 93%;
-  --muted-foreground: 0 0% 66%;
-  --border: 0 0% 27%;
-  --border-subtle: 0 0% 22%;
+  --background: 0 0% 12.9412%; /* #212121 */
+  --surface: 0 0% 9.0196%; /* #171717 */
+  --surface-2: 0 0% 18.8235%; /* #303030 */
+  --foreground: 0 0% 92.549%; /* #ececec */
+  --muted: 0 0% 40%;
+  --muted-foreground: 0 0% 70.5882%; /* #b4b4b4 */
+  --border: 0 0% 25.8824%; /* #424242 */
+  --border-subtle: 0 0% 18.8235%;
+  --chat-hover: #212121;
+  --chat-selected: #303030;
+  --chat-input: #303030;
+  --chat-focus: #b4b4b4;
+  --chat-quota: #b4b4b4;
 }
+button:focus-visible,input:focus-visible,textarea:focus-visible { outline-color: var(--chat-focus); }
+::selection { background: hsl(var(--overlay)/.2); }
 .workspace-sidebar { width: 268px; border: 0; padding: 16px 12px 12px; }
 .sidebar-heading { padding: 10px 10px 26px; font-size: 16px; letter-spacing: -.3px; }
 .sidebar-heading strong { font-weight: 600; }
 .project-switcher { margin: 0 0 12px; border-color: transparent; border-radius: 12px; }
-.project-switcher:hover { background: hsl(var(--overlay)/.04); }
+.project-switcher:hover { background: var(--chat-hover); }
 .project-switcher select { font-size: 14px; }
 .project-switcher .icon-button { border: 0; border-radius: 10px; }
 .thread-search { font-size: 14px; padding: 10px 12px; border-radius: 12px; margin: 0 0 12px; background: hsl(var(--overlay)/.025); border-color: transparent; }
 .thread-search:focus { background: hsl(var(--background)); }
 .thread-row { font-size: 14px; padding: 10px 12px; border-radius: 9px; color: hsl(var(--foreground)); }
 .thread-list .thread-row>svg { display: none; }
-.thread-row.selected { background: hsl(var(--overlay)/.09); }
+.thread-row:hover { background: var(--chat-hover); }
+.thread-row.selected { background: var(--chat-selected); }
 .icon-button { border-radius: 50%; }
 .weekly-quota { padding: 12px; margin-top: 8px; gap: 5px; border-top: 1px solid hsl(var(--border-subtle)); font-size: 11px; }
 .weekly-quota strong { font-size: 12px; font-weight: 500; }
@@ -63,7 +79,7 @@
 .assistant-message-author svg { display: none; }
 .assistant-copy { margin-left: 0; padding: 8px; }
 .composer-wrap { padding: 8px 24px 12px; }
-.composer { max-width: 768px; border-radius: 28px; border-color: hsl(var(--border-subtle)); background: hsl(var(--background)); box-shadow: 0 2px 12px #0000000a; padding: 4px; }
+.composer { max-width: 768px; border-radius: 28px; border-color: hsl(var(--border-subtle)); background: var(--chat-input); box-shadow: none; padding: 4px; }
 .dark .composer { background: hsl(var(--surface-2)); border-color: transparent; box-shadow: none; }
 .composer:focus-within { border-color: hsl(var(--border)); }
 .composer textarea { font-size: 16px; min-height: 62px; max-height: 200px; padding: 14px 18px 8px; resize: none; }
@@ -99,3 +115,11 @@
   .empty-conversation h1 { font-size: 26px; }
 }
 @media(prefers-reduced-motion:reduce) { .workspace-sidebar { transition: none; } }
+
+/* Native progress colours otherwise differ between Safari and Chromium. */
+.weekly-quota progress { appearance: none; border: 0; border-radius: 4px; overflow: hidden; background: hsl(var(--border)); }
+.weekly-quota progress::-webkit-progress-bar { background: hsl(var(--border)); }
+.weekly-quota progress::-webkit-progress-value { background: var(--chat-quota); }
+.weekly-quota progress::-moz-progress-bar { background: var(--chat-quota); }
+.composer textarea::placeholder,.thread-search::placeholder { color: hsl(var(--muted-foreground)); opacity: 1; }
+.conversation .prose li::marker { color: hsl(var(--muted-foreground)); }
