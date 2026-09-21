@@ -15,6 +15,7 @@ const statusLabels:Record<string,string>={awaiting_approval:'Ожидает од
 import { AccessPanel } from './workspace/AccessPanel';
 import { ProjectPanel } from './workspace/ProjectPanel';
 import { PublicEvent } from './workspace/PublicEvent';
+import { Diagnostics } from './workspace/Diagnostics';
 import { Composer } from './workspace/Composer';
 import { useComposer } from './workspace/useComposer';
 import { RequestActivity } from './workspace/RequestActivity';
@@ -72,6 +73,7 @@ export function App(){
    {owner&&<div className="owner-navigation"><button className={'thread-row '+(section==='approvals'?'selected':'')} onClick={()=>{setSection('approvals');setSidebar(false);}}><Inbox size={16}/><span>На одобрение</span>{waiting.length>0&&<span className="count">{waiting.length}</span>}</button><button className={'thread-row '+(section==='access'?'selected':'')} onClick={()=>{setSection('access');setSidebar(false);}}><ShieldCheck size={16}/><span>Доступ к тредам</span></button></div>}
    {<div className="weekly-quota small" aria-label="Недельная квота Codex">{state.weekly_quota?<><strong>Неделя: {Date.now()/1000>=state.weekly_quota.resets_at?'ожидаем обновления':`${Math.round(100-state.weekly_quota.used_percent)}% осталось`}</strong><progress max={100} value={Math.max(0,100-state.weekly_quota.used_percent)} aria-label="Остаток недельной квоты"/><span className="muted">Сброс: {new Date(state.weekly_quota.resets_at*1000).toLocaleString('ru-RU')}</span><span className="muted">Данные на {new Date(state.weekly_quota.observed_at*1000).toLocaleString('ru-RU')}</span></>:<span className="muted">Недельная квота пока неизвестна</span>}</div>}
    <PushSettings/>
+   {owner&&<Diagnostics/>}
    <div className="sidebar-bottom"><span className="small muted">{owner?'Владелец':'Участник'}</span><button className="icon-button" onClick={()=>setDark(!dark)} aria-label={dark?'Светлая тема':'Тёмная тема'}>{dark?<Sun size={17}/>:<Moon size={17}/>}</button><button className="icon-button" onClick={logout} disabled={busy} aria-label="Выйти"><LogOut size={17}/></button></div>
   </aside>
   <div className="main-column"><header className="workspace-header"><button className="icon-button mobile-only" onClick={()=>setSidebar(true)} aria-label="Открыть треды"><Menu size={20}/></button><div className="header-title"><button className="project-link muted" onClick={openProject} aria-label={'Открыть проект '+(activeProject?.title||'')}>{activeProject?.title||'Проекты'}</button><ChevronRight size={14}/><strong>{section==='project'?'Задачи':section==='approvals'?'Одобрения':section==='access'?'Доступ':thread?.title||'Треды'}</strong></div><span className={'connection '+(online?'online':'')}><Circle size={8} fill="currentColor"/>{online?'Codex на связи':'Ожидаем Codex'}</span><button className="icon-button" onClick={()=>void refresh()} aria-label="Обновить"><RefreshCw size={16}/></button></header>

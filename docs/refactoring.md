@@ -188,3 +188,12 @@ submission state and retry identity. `workspace/Composer.tsx` renders the form.
 Targets are captured before asynchronous work, so changing the selected task
 does not redirect a file upload or submitted message. A failed unchanged request
 retains its draft and idempotency key; browser tests cover retry and navigation.
+
+## Owner operational diagnostics
+
+The owner can expand “Состояние сервиса” in the sidebar to fetch an authenticated,
+CSRF-protected diagnostic snapshot. It exposes schema version, collector and
+history freshness, queue totals and push device/retry/uncertain counts only.
+Message bodies, file paths, credentials and subscription endpoints are excluded.
+Members are denied by the backend regardless of UI visibility. Collector freshness
+is a recent-poll indicator, not proof that a long-running CLI turn is stalled.

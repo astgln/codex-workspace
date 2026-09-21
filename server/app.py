@@ -12,7 +12,7 @@ from starlette.concurrency import run_in_threadpool
 from cloud import login, workspace, domain
 from . import api
 from .store import Store
-from . import files, history, sessions, push
+from . import files, history, sessions, push, diagnostics
 
 store = None
 
@@ -106,6 +106,12 @@ async def handle(request: Request, path: str):
         return Response('{"error":"access_denied"}',status_code=403,media_type='application/json',headers={'Cache-Control':'no-store'})
     if path == 'health':
         result = api.response(200,{'status':'ok','mode':'standalone-web'})
+    elif path == 'web/diagnostics':
+        if request.method != 'POST':return Response(status_code=405)
+        try:
+            value=await run_in_threadpool(diagnostics.inspect,store,uid,os.environ['OWNER_USERNAME'])
+            result=api.response(200,value)
+        except workspace.Forbidden:result=api.response(403,{'error':'access_denied'})
     elif path.startswith('web/push/'):
         try:
             if request.method!='POST':return Response(status_code=405)

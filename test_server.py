@@ -39,6 +39,16 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(result.status_code,200)
         self.assertEqual(result.json(),{'allowed':False})
 
+    def test_diagnostics_requires_owner_cookie_and_csrf(self):
+        self.assertEqual(self.client.post('/web/diagnostics',json={}).status_code,401)
+        _,csrf=self.browser_session()
+        self.assertEqual(self.client.post('/web/diagnostics',json={}).status_code,403)
+        result=self.client.post('/web/diagnostics',json={},headers={'X-CSRF-Token':csrf})
+        self.assertEqual(result.status_code,200)
+        self.assertIn('notifications',result.json())
+        Store(self.temp.name).mutate(lambda s:s['bindings'].update(owner=99,friend=42))
+        self.assertEqual(self.client.post('/web/diagnostics',json={},headers={'X-CSRF-Token':csrf}).status_code,403)
+
     def test_push_config_requires_session_and_csrf(self):
         self.assertEqual(self.client.post('/web/push/config',json={}).status_code,401)
         token,csrf=self.browser_session()

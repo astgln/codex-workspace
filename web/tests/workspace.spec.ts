@@ -23,6 +23,7 @@ async function fixture(page: Page, role: 'owner'|'member' = 'owner') {
     if(path==='/web/login/config')output={client_id:'123',nonce:'test-nonce',challenge:'test-challenge'};
     else if(path==='/web/login/session'){loggedIn=true;output={ok:true};}
     else if(path==='/web/state')output=state;
+    else if(path==='/web/diagnostics')output={collector_recent:true,collector_seen:1,history_synced:1,queue:{awaiting_approval:0,approved:2},completed:5,notifications:{devices:1,retrying:0,uncertain:1}};
     else if(path==='/web/push/config')output={public_key:'test-key'};
     else if(path==='/web/history')output={messages:[],before:null,synced_at:1,loading_older:false,pending:false};
     else if(path==='/web/messages'){
@@ -379,4 +380,16 @@ test('failed submission keeps draft and idempotency key on retry',async({page})=
  expect(attempts).toHaveLength(2);
  expect(attempts[0].request_id).toBe(attempts[1].request_id);
  expect(f.sent).toHaveLength(1);
+});
+
+test('owner diagnostics shows service counters',async({page})=>{
+ await fixture(page);
+ await page.getByText('Состояние сервиса',{exact:true}).click();
+ await expect(page.getByText('Обработчик на связи',{exact:true})).toBeVisible();
+ await expect(page.getByText('Неопределённые отправки не повторяются автоматически.',{exact:false})).toBeVisible();
+});
+
+test('member has no diagnostics control',async({page})=>{
+ await fixture(page,'member');
+ await expect(page.getByText('Состояние сервиса',{exact:true})).toHaveCount(0);
 });
