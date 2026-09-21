@@ -10,40 +10,7 @@ from pathlib import Path
 import time
 from bridge import BridgeError, exclusive
 from cloud_client import API, STATE
-from history_client import publish
-from rollout_history import read_public, READER_VERSION
-from rollout_response import locate
-
-
-def sync_once(api, catalog, project, root, cache):
-    if catalog.get('project_id') != project:
-        raise BridgeError('Project mismatch')
-    count = 0
-    pending = {t['thread'] for t in api.call('/v2/history/pending', {}).get('threads', [])}
-    for thread in catalog.get('threads', []):
-        if thread.get('project_id') not in {p['id'] for p in catalog.get('projects', [{'id':project}])}:
-            raise BridgeError('Project mismatch')
-        ident = thread['id']
-        path = locate(root, ident)
-        stat = path.stat()
-        fingerprint = [stat.st_dev, stat.st_ino]
-        previous = cache.get(ident, {})
-        compatible = previous.get('reader_version') == READER_VERSION and previous.get('checkpoint_version') == 1
-        offset = previous.get('offset', 0) if compatible and previous.get('file') == fingerprint else 0
-        if offset > stat.st_size:
-            offset = 0
-        if offset == stat.st_size:
-            if ident in pending:
-                publish(api, {'thread': {'id': ident}, 'turns': []}, 'latest')
-            continue
-        read = read_public(path, ident, offset)
-        publish(api, read, 'older' if offset == 0 else 'latest')
-        if read.get('weekly_quota'):
-            api.call('/v2/usage', read['weekly_quota'])
-        cache[ident] = {'checkpoint_version': 1, 'reader_version': READER_VERSION,
-                        'file': fingerprint, 'offset': read['source_offset']}
-        count += sum(len(t['items']) for t in read['turns'])
-    return count
+from history_sync import sync_once
 
 
 def main():
@@ -70,12 +37,16 @@ def main():
                     return
                 catalog = json.loads(args.catalog.read_text())
                 cache = json.loads(cache_path.read_text()) if cache_path.exists() else {}
-                count = sync_once(API(config), catalog, config['project_id'], root, cache)
+                failures = {}
+                count = sync_once(API(config), catalog, config['project_id'], root, cache, failures)
                 temp = cache_path.with_suffix('.tmp')
                 temp.write_text(json.dumps(cache));temp.replace(cache_path)
-                if count or args.once or previous_error:
-                    print(json.dumps({'status':'synced','messages':count}), flush=True)
-                previous_error = False
+                if count or args.once or bool(failures) != previous_error:
+                    print(json.dumps({'status':'partial' if failures else 'synced',
+                                      'messages':count,'failed_tasks':len(failures)}), flush=True)
+                previous_error = bool(failures)
+                if args.once and failures:
+                    raise SystemExit(1)
             except (BridgeError, OSError, ValueError, KeyError):
                 if not previous_error:
                     print('{"status":"history_sync_failed","retry":true}', flush=True)

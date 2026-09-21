@@ -221,3 +221,14 @@ checkpoints. Desktop was not restarted.
   runtime behavior after all collector changes.
 - Complete the real member/attachment and iOS push acceptance checks already
   listed above. These are not replaced by fixture or provider tests.
+
+## History failure isolation
+
+`history_sync.py` owns per-task history work and separate quota publication;
+`history_watch.py` remains the scheduling/checkpoint service. Catalog scope is
+validated in full before any publication. Missing or malformed task journals
+leave that task's cursor unchanged while other tasks continue. Successfully
+published history commits its checkpoint even when quota delivery fails; the
+pending quota sample survives in the private checkpoint and retries without
+rereading the journal. Partial passes persist successful cursors and log only
+aggregate failure counts; one-shot execution returns failure for partial passes.
