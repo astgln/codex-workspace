@@ -13,6 +13,7 @@ from cloud import login, workspace, domain
 from . import api
 from .store import Store
 from . import files, history, sessions, push, diagnostics
+from .http_security import LoginBudget, secure_headers
 
 store = None
 
@@ -50,6 +51,8 @@ async def lifespan(app):
         if not os.environ.get(key):
             raise RuntimeError('Missing service configuration')
     store = Store(os.environ.get('WORKSPACE_DATA','/var/lib/codex-workspace'))
+    sessions.upgrade_auth_trust(store)
+    app.state.login_budget = LoginBudget()
     push.initialize(store)
     task = asyncio.create_task(refresh_login_keys())
     push_stop = asyncio.Event()
@@ -65,6 +68,17 @@ async def lifespan(app):
 
 
 app = FastAPI(lifespan=lifespan,docs_url=None,redoc_url=None,openapi_url=None)
+
+
+@app.middleware('http')
+async def security_boundary(request, call_next):
+    wait = app.state.login_budget.take(request.url.path.lstrip('/'))
+    if wait:
+        response = Response('{"error":"rate_limited"}', status_code=429,
+                            media_type='application/json', headers={'Retry-After': str(wait)})
+    else:
+        response = await call_next(request)
+    return secure_headers(response, request.url.path)
 
 
 @app.api_route('/{path:path}', methods=['GET','POST','PUT','DELETE','PATCH','OPTIONS','HEAD'])

@@ -5,6 +5,7 @@ import time
 from cloud import domain, workspace
 from server.migrations import read_state
 from server import push_preview
+from cloud.redaction import public_text
 
 
 def handle(store, uid, owner, action, body, collector=False):
@@ -35,7 +36,7 @@ def handle(store, uid, owner, action, body, collector=False):
                     db.execute('UPDATE history_threads SET requested=? WHERE thread=?',(now,thread))
                 rows=db.execute('SELECT id,position,role,text,created FROM history_messages WHERE thread=? AND (? IS NULL OR position<?) ORDER BY position DESC LIMIT 51',(thread,before,before)).fetchall()
                 page=rows[:50]
-                result={'messages':[dict(zip(('id','position','role','text','created'),r)) for r in reversed(page)],
+                result={'messages':[{**dict(zip(('id','position','role','text','created'),r)), 'text':public_text(r[3])} for r in reversed(page)],
                         'before':page[-1][1] if len(rows)>50 else None,'synced_at':meta[1] or None,
                         'loading_older':bool(meta[3]),'pending':meta[2]>meta[1] or meta[1]<now-30}
             elif action=='publish' and collector:
@@ -47,6 +48,7 @@ def handle(store, uid, owner, action, body, collector=False):
                     if (not isinstance(ident,str) or not 1<=len(ident)<=160 or not isinstance(position,str) or not 1<=len(position)<=200
                             or role not in ('user','assistant') or not isinstance(text,str) or not 1<=len(text)<=32000
                             or type(created) is not int or created<0):raise domain.Rejected('Invalid public history message')
+                    text = public_text(text)
                     turn = message.get('turn_id')
                     if turn is not None and (not isinstance(turn,str) or not re.fullmatch(r'[a-zA-Z0-9-]{1,80}',turn)):
                         raise domain.Rejected('Invalid history turn')

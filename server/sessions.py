@@ -47,3 +47,26 @@ def revoke(store,token):
 def check_csrf(request,csrf,origin):
     if request.headers.get('origin')!=origin or not secrets.compare_digest(request.headers.get('x-csrf-token',''),csrf):
         raise workspace.Forbidden()
+
+
+def upgrade_auth_trust(store):
+    from .migrations import read_state, write_state
+    db = store.connect()
+    try:
+        db.execute('BEGIN IMMEDIATE')
+        db.execute('CREATE TABLE IF NOT EXISTS security_upgrades(name TEXT PRIMARY KEY)')
+        if not db.execute("SELECT 1 FROM security_upgrades WHERE name='server-only-jwks-v2'").fetchone():
+            state = read_state(db)
+            state.pop('login_jwks', None)
+            state.pop('telegram_jwks_v2', None)
+            write_state(db, state)
+            for table in ('browser_sessions', 'push_subscriptions', 'push_deliveries'):
+                if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone():
+                    db.execute('DELETE FROM ' + table)
+            db.execute("INSERT INTO security_upgrades VALUES('server-only-jwks-v2')")
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()

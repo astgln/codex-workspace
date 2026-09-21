@@ -6,14 +6,8 @@ import re
 import os
 from pathlib import Path
 from runtime_support import BridgeError, exclusive
+from cloud.redaction import public_text
 from workspace_client import API, STATE
-
-
-def public_text(text):
-    # Do not export recognizable credentials even if pasted in a visible message.
-    text=re.sub(r'\b\d{6,15}:[A-Za-z0-9_-]{30,}\b','[Telegram token hidden]',text)
-    text=re.sub(r'\b(?:sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b','[credential hidden]',text)
-    return re.sub(r'(?im)^(\s*(?:export\s+)?[A-Z_]*(?:TOKEN|PASSWORD|SECRET|API_KEY)[A-Z_]*\s*=).+$',r'\1[hidden]',text)
 
 
 def messages(read):

@@ -5,6 +5,7 @@ from runtime_support import BridgeError
 from cli_session import snapshot, command
 from worker_recovery import collect, request_text
 from worker_execution import execute
+from cloud.redaction import response_body
 from queue_transport import publish_results
 
 
@@ -51,7 +52,7 @@ def dispatch_one(queue, home, executable, catalog, run=None, *, api, should_stop
                     if current['result']:
                         response = json.loads(current['result'])
                         if response['status'] == 'running':
-                            api.call('/v2/responses', response)
+                            api.call('/v2/responses', response_body(response))
             except (BridgeError, OSError, ValueError, KeyError):
                 # The child may still be running; preserve its durable intent.
                 # Network/recovery failure cannot justify killing or resubmitting it.

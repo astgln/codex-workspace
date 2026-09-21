@@ -7,6 +7,7 @@ import urllib.request
 from runtime_support import BridgeError, NoRedirect
 
 STATE = Path(__file__).resolve().parent / '.local'
+MAX_RESPONSE_BYTES = 1024 * 1024
 
 
 class API:
@@ -26,16 +27,26 @@ class API:
         self.key = lines[0]
 
     def call(self, path, body):
+        if (not isinstance(path, str) or not path.startswith('/v2/')
+                or any(character in path for character in ('?', '#', '@', '\\'))
+                or any(ord(character) < 33 for character in path)):
+            raise BridgeError('Invalid API path')
         request = urllib.request.Request(self.url + path, data=json.dumps(body).encode(),
             headers={'Authorization': 'Bearer ' + self.key, 'Content-Type': 'application/json'})
         try:
             with urllib.request.build_opener(NoRedirect()).open(request, timeout=30) as response:
-                return json.load(response)
+                raw = response.read(MAX_RESPONSE_BYTES + 1)
+                if len(raw) > MAX_RESPONSE_BYTES:
+                    raise BridgeError('Cloud response exceeds size limit')
+                result = json.loads(raw)
+                if not isinstance(result, dict):
+                    raise BridgeError('Invalid cloud response')
+                return result
         except urllib.error.HTTPError as exc:
             if exc.code == 409:
                 raise Conflict() from None
             raise BridgeError('Cloud HTTP ' + str(exc.code) + '; details hidden') from None
-        except (OSError, ValueError):
+        except (OSError, ValueError, RecursionError):
             raise BridgeError('Cloud request failed; secrets hidden') from None
 
 

@@ -1,13 +1,11 @@
 """Bounded notification previews tied to an exact completed answer event."""
-import re
+from cloud.redaction import public_text
 
 
 def preview(text, limit=500):
     if not isinstance(text, str):
         return ''
-    text = re.sub(r'\b\d{6,15}:[A-Za-z0-9_-]{30,}\b', '[token hidden]', text)
-    text = re.sub(r'\b(?:sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b', '[credential hidden]', text)
-    text = re.sub(r'(?im)^(\s*(?:export\s+)?[A-Z_]*(?:TOKEN|PASSWORD|SECRET|API_KEY)[A-Z_]*\s*=).+$', r'\1[hidden]', text)
+    text = public_text(text)
     text = ' '.join(text.split())
     return text if len(text) <= limit else text[:limit-1] + '…'
 

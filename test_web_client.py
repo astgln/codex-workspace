@@ -102,7 +102,6 @@ class CollectorTests(unittest.TestCase):
         self.receipt();dispatch=self.q.begin(-1,'thread-one','baseline-turn',api=self.api);self.q.sent(-1,dispatch['marker'])
         self.q.publish(-1,{'marker':dispatch['marker'],'thread':'thread-one','turn_id':'new-turn',
                           'status':'completed','events':[{'type':'agent_message','text':'Actual reply'}]})
-        with self.q.db:self.q.db.execute("INSERT OR REPLACE INTO metadata VALUES('login_keys',?)",(int(time.time()),))
         state=domain.initial();state['items']['-1']={**self.item,'channel':'web','status':'delivered'}
         revisions=[]
         class RemoteAPI:

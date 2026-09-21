@@ -39,9 +39,6 @@ def api(event, context=None, *, mutate):
         if path == '/v2/worker/status':
             from cloud.worker_status import save
             return response(200, mutate(lambda s: save(s, body, now)))
-        if path == '/v2/login-keys':
-            from cloud import login
-            return response(200, mutate(lambda s: login.cache_keys(s, body, now)))
         if path == '/v2/catalog':
             return response(200, mutate(lambda s: workspace.sync_catalog(s, body, os.environ['PROJECT_ID'], now)))
         if path == '/v2/inbox/claim':

@@ -3,6 +3,7 @@ import hashlib
 import json
 import re
 from . import domain
+from .redaction import public_text, public_value
 
 
 def publish(state, body, now):
@@ -30,6 +31,11 @@ def publish(state, body, now):
     if len(encoded.encode()) > 100000:
         raise domain.Rejected('Response too large')
     digest = hashlib.sha256(json.dumps([clean, status], sort_keys=True).encode()).hexdigest()
+    if 'events' in item and 'result_status' in item:
+        filtered = public_value(item['events'])
+        if filtered != item['events']:
+            item['events'] = filtered
+            item['result_digest'] = hashlib.sha256(json.dumps([filtered, item['result_status']], sort_keys=True).encode()).hexdigest()
     previous = item.get('result_revision', 0)
     if revision < previous or revision == previous and digest != item.get('result_digest'):
         raise domain.Rejected('Response revision conflict')
@@ -54,7 +60,7 @@ def public_event(event, index):
             return
         if not isinstance(value, str) or len(value) > limit:
             raise domain.Rejected('Invalid event field')
-        result[key] = value
+        result[key] = public_text(value)
 
     if kind == 'agent_message':
         text('text')
@@ -82,5 +88,5 @@ def public_event(event, index):
             if (not isinstance(step, dict) or not isinstance(step.get('step'), str)
                     or len(step['step']) > 1000 or step.get('status') not in ('pending', 'in_progress', 'completed', 'failed')):
                 raise domain.Rejected('Invalid plan step')
-            result['plan'].append({'step': step['step'], 'status': step['status']})
+            result['plan'].append({'step': public_text(step['step']), 'status': step['status']})
     return result

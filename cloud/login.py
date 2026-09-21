@@ -16,7 +16,7 @@ CACHE_TTL = 24 * 3600
 
 
 def cache_keys(state, body, now):
-    """Trusted collector/deployer only; browsers cannot update trust anchors."""
+    """Cache keys fetched by the server from the fixed Telegram HTTPS endpoint."""
     keys, fetched = body.get('keys'), body.get('fetched_at')
     if type(fetched) is not int or not now - 300 <= fetched <= now + 30:
         raise ValueError('Invalid key fetch time')
@@ -34,12 +34,13 @@ def cache_keys(state, body, now):
         clean.append({k:key[k] for k in ('kty','kid','n','e','alg','use') if k in key})
     if not clean:
         raise ValueError('No supported public keys')
-    state['login_jwks'] = {'keys':clean, 'fetched_at':fetched}
+    state.pop('login_jwks', None)  # Obsolete externally writable cache is never trusted.
+    state['telegram_jwks_v2'] = {'keys':clean, 'fetched_at':fetched}
     return {'ok':True,'expires_at':fetched+CACHE_TTL}
 
 
 def cached_keys(state, now):
-    bundle = state.get('login_jwks', {})
+    bundle = state.get('telegram_jwks_v2', {})
     if now - CACHE_TTL < bundle.get('fetched_at', 0) <= now + 30:
         return bundle.get('keys')
     return None

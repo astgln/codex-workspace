@@ -1,6 +1,7 @@
 """Durable local request states and dispatch identity, independent of CLI entrypoints."""
 import hashlib
 import json
+import os
 from pathlib import Path
 import sqlite3
 from runtime_support import BridgeError
@@ -12,6 +13,7 @@ class Queue:
     def __init__(self, state):
         self.state = state
         self.db = sqlite3.connect(state / 'web-queue.sqlite3')
+        os.chmod(state / 'web-queue.sqlite3', 0o600)
         self.db.row_factory = sqlite3.Row
         self.db.execute('''CREATE TABLE IF NOT EXISTS requests (
             id INTEGER PRIMARY KEY, payload TEXT NOT NULL, status TEXT NOT NULL,

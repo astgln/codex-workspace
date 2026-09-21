@@ -4,6 +4,7 @@ import json
 import re
 import secrets
 from . import domain
+from .redaction import public_value
 from .access import Forbidden, can_submit
 
 MAX_TEXT = 16000
@@ -11,7 +12,7 @@ MAX_TEXT = 16000
 
 def public_item(item):
     keys = ('id', 'sender', 'thread', 'text', 'created', 'expires', 'status', 'snapshot', 'events', 'result_status', 'attachments')
-    return {k: item[k] for k in keys if k in item}
+    return {k: public_value(item[k]) if k == 'events' else item[k] for k in keys if k in item}
 
 
 def submit(state, uid, owner, body, now):
