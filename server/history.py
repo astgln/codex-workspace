@@ -1,5 +1,6 @@
 """Shared public conversation history, separate from the bounded request queue."""
 import json
+import re
 import time
 from cloud import domain, workspace
 from server.migrations import read_state
@@ -44,8 +45,11 @@ def handle(store, uid, owner, action, body, collector=False):
                     if (not isinstance(ident,str) or not 1<=len(ident)<=160 or not isinstance(position,str) or not 1<=len(position)<=200
                             or role not in ('user','assistant') or not isinstance(text,str) or not 1<=len(text)<=32000
                             or type(created) is not int or created<0):raise domain.Rejected('Invalid public history message')
+                    turn = message.get('turn_id')
+                    if turn is not None and (not isinstance(turn,str) or not re.fullmatch(r'[a-zA-Z0-9-]{1,80}',turn)):
+                        raise domain.Rejected('Invalid history turn')
                     if role=='assistant' and message.get('phase')=='final_answer' and now-300<=created<=now+60:
-                        db.execute('INSERT OR IGNORE INTO push_answers VALUES(?,?,?)',('history:'+thread+':'+ident,thread,created))
+                        db.execute('INSERT OR IGNORE INTO push_answers VALUES(?,?,?)',(('answer:'+thread+':'+turn if turn else 'history:'+thread+':'+ident),thread,created))
                     db.execute('INSERT INTO history_messages VALUES(?,?,?,?,?,?) ON CONFLICT(thread,id) DO UPDATE SET position=excluded.position,role=excluded.role,text=excluded.text,created=excluded.created',(thread,ident,position,role,text,created))
                 if body.get('finish'):
                     cursor=body.get('cursor')

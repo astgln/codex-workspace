@@ -1,6 +1,7 @@
 """Revisioned response publication with explicit public event types."""
 import hashlib
 import json
+import re
 from . import domain
 
 
@@ -9,6 +10,11 @@ def publish(state, body, now):
     item = state['items'].get(str(body.get('id')))
     if not item or item.get('channel') != 'web' or item['status'] != 'delivered' or item['thread'] != body.get('thread'):
         raise domain.Rejected('Invalid response target')
+    turn = body.get('turn_id')
+    if turn is not None and (not isinstance(turn,str) or not re.fullmatch(r'[a-zA-Z0-9-]{1,80}',turn)):
+        raise domain.Rejected('Invalid response turn')
+    if item.get('result_turn_id') and turn != item['result_turn_id']:
+        raise domain.Rejected('Response moved to another turn')
     events, revision, status = body.get('events'), body.get('revision'), body.get('status')
     if (not isinstance(events, list) or len(events) > 100 or type(revision) is not int or revision < 1
             or status not in ('running', 'completed', 'failed', 'needs_input')):
@@ -32,6 +38,8 @@ def publish(state, body, now):
             raise domain.Rejected('Response already finished')
         item.update(events=clean, result_revision=revision, result_digest=digest,
                     result_status=status, result_updated=now)
+    if turn is not None:
+        item['result_turn_id'] = turn
     return {'ok': True, 'revision': revision}
 
 

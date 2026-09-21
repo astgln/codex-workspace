@@ -91,8 +91,8 @@ def send(store,sub,payload):
                 vapid_claims={'sub':os.environ['PUBLIC_ORIGIN']},ttl=3600,timeout=10,requests_session=session)
             return response.status_code
         except WebPushException as exc:
-            return exc.response.status_code if exc.response is not None else 503
-        except requests.RequestException:return 503
+            return exc.response.status_code if exc.response is not None else None
+        except requests.RequestException:return None
 
 
 def tick(store,owner):
@@ -103,7 +103,8 @@ def tick(store,owner):
         if item['status']=='awaiting_approval' and item['expires']>now:
             events.append(('approval:'+str(item['id']),item['thread'],item['created'],'approval'))
         if item.get('result_status')=='completed':
-            events.append(('reply:'+str(item['id']),item['thread'],item.get('result_updated',0),'answer'))
+            event = 'answer:'+item['thread']+':'+item['result_turn_id'] if item.get('result_turn_id') else 'reply:'+str(item['id'])
+            events.append((event,item['thread'],item.get('result_updated',0),'answer'))
     with database(store) as db:
         events.extend((r[0],r[1],r[2],'answer') for r in db.execute('SELECT id,thread,created FROM push_answers WHERE created>?',(now-86400,)))
         subscriptions=db.execute('SELECT id,uid,subscription,created FROM push_subscriptions').fetchall()
@@ -115,10 +116,11 @@ def tick(store,owner):
         for event,thread,stamp,kind in events:
             if stamp<created or stamp<now-86400 or thread not in allowed or (kind=='approval' and not admin):continue
             with database(store) as db:
+                db.execute('BEGIN IMMEDIATE')
                 row=db.execute('SELECT attempts,next_attempt,done FROM push_deliveries WHERE subscription=? AND event=?',(ident,event)).fetchone()
                 if row and (row[2] or row[1]>now or row[0]>=8):continue
                 attempts=(row[0] if row else 0)+1
-                db.execute('INSERT OR REPLACE INTO push_deliveries VALUES(?,?,?,?,0)',(ident,event,attempts,now+120))
+                db.execute('INSERT OR REPLACE INTO push_deliveries VALUES(?,?,?,?,2)',(ident,event,attempts,now+120))
             # No task names, message bodies, files or approval credentials on lock screen.
             payload={'title':'Codex Workspace','body':'Новый запрос на одобрение' if kind=='approval' else 'Готов новый ответ',
                      'url':'/#approvals' if kind=='approval' else '/#thread='+thread,'tag':kind+':'+thread}
@@ -134,5 +136,5 @@ def tick(store,owner):
             code=send(store,json.loads(raw),payload)
             with database(store) as db:
                 db.execute('UPDATE push_deliveries SET done=?,next_attempt=? WHERE subscription=? AND event=?',
-                           (int(200<=code<300 or code in (400,401,403,404,410)),now+min(3600,30*2**attempts),ident,event))
+                           (2 if code is None else int(200<=code<300 or code in (400,401,403,404,410)),now+min(3600,30*2**attempts),ident,event))
                 if code in (404,410):db.execute('DELETE FROM push_subscriptions WHERE id=?',(ident,))

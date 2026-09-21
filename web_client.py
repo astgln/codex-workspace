@@ -181,7 +181,7 @@ class Queue:
             dispatch['turn_id']=body['turn_id']
             revision = row['revision'] + 1
             result = {k: body[k] for k in ('thread', 'status', 'events')}
-            result.update(id=ident, revision=revision)
+            result.update(id=ident, revision=revision, turn_id=body['turn_id'])
             self.db.execute("UPDATE requests SET status='publishing',result=?,revision=?,dispatch=? WHERE id=?",
                             (json.dumps(result), revision, json.dumps(dispatch), ident))
         return {'status': 'queued', 'revision': revision}

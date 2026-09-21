@@ -166,3 +166,17 @@ zero using stable message IDs; failed publication does not advance the checkpoin
 The reader version describes our supported public-record interpretation, not an
 assumed upstream Codex schema guarantee. Format support remains explicitly limited
 to the journal records recognized by the reader and its regression fixtures.
+
+## Notification identity and uncertain delivery
+
+New collector response publications and history messages carry the Codex turn ID.
+Both sources identify answer notifications as `answer:<task>:<turn>`, deduplicating
+one turn even when the two paths arrive separately. Older records without a turn
+ID retain their legacy event identity; they cannot be reliably cross-correlated.
+A push attempt commits its intent before network I/O under an immediate SQLite
+transaction. `push_deliveries.done=2` means outcome unknown and is never retried
+automatically, including after a process crash or a network exception without a
+provider response. Explicit retryable provider responses use bounded backoff;
+terminal responses use done=1. This avoids duplicate retries at the cost of a
+possibly missed notification on uncertain delivery; website history remains the
+source of truth. Real device delivery still requires the iPhone acceptance test.

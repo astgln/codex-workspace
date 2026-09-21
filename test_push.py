@@ -63,3 +63,28 @@ class PushTests(unittest.TestCase):
    headers=request.call_args.kwargs['headers']
    self.assertIn('vapid',headers['authorization'].lower())
    self.assertEqual(headers['content-encoding'],'aes128gcm')
+ def test_same_turn_from_history_and_request_sends_once(self):
+  self.subscribe();now=int(time.time())
+  self.store.mutate(lambda s:s['items'].update({'-1':{'id':-1,'channel':'web','thread':'task','status':'delivered','created':now,'result_status':'completed','result_turn_id':'turn-1','result_updated':now}}))
+  from server import history
+  history.handle(self.store,None,'owner','publish',{'thread':'task','messages':[{'id':'message-1','position':'1','role':'assistant','text':'reply','created':now,'phase':'final_answer','turn_id':'turn-1'}]},collector=True)
+  with patch('server.push.send',return_value=201) as send:
+   push.tick(self.store,'owner');push.tick(self.store,'owner')
+   self.assertEqual(send.call_count,1)
+ def test_uncertain_network_result_is_not_retried(self):
+  self.subscribe();now=int(time.time())
+  with push.database(self.store) as db:db.execute('INSERT INTO push_answers VALUES(?,?,?)',('answer','task',now))
+  with patch('server.push.send',return_value=None) as send:
+   push.tick(self.store,'owner')
+   with push.database(self.store) as db:db.execute('UPDATE push_deliveries SET next_attempt=?',(now-1,))
+   push.tick(self.store,'owner')
+   self.assertEqual(send.call_count,1)
+  with push.database(self.store) as db:self.assertEqual(db.execute('SELECT done FROM push_deliveries').fetchone()[0],2)
+ def test_crash_after_send_intent_is_not_retried(self):
+  self.subscribe();now=int(time.time())
+  with push.database(self.store) as db:db.execute('INSERT INTO push_answers VALUES(?,?,?)',('answer','task',now))
+  with patch('server.push.send',side_effect=RuntimeError('crash')):
+   with self.assertRaises(RuntimeError):push.tick(self.store,'owner')
+  with push.database(self.store) as db:db.execute('UPDATE push_deliveries SET next_attempt=?',(now-1,))
+  with patch('server.push.send') as send:
+   push.tick(self.store,'owner');send.assert_not_called()
