@@ -15,6 +15,7 @@ const statusLabels:Record<string,string>={awaiting_approval:'Ожидает од
 import { AccessPanel } from './workspace/AccessPanel';
 import { ProjectPanel } from './workspace/ProjectPanel';
 import { PublicEvent } from './workspace/PublicEvent';
+import { RequestActivity } from './workspace/RequestActivity';
 
 export function App(){
  const [checking,setChecking]=useState(true);
@@ -26,6 +27,7 @@ export function App(){
  const [dark,setDark]=useState(()=>localStorage.getItem('workspace-theme')!=='light');
  const [drafts,setDrafts]=useState<Record<string,string>>({});
  const [attachments,setAttachments]=useState<Record<string,Attachment[]>>({}),[uploading,setUploading]=useState('');
+ const [sending,setSending]=useState('');
  const loginAttempt=useRef<AbortController|null>(null);
  const preparation=useRef(0);
  const [preparing,setPreparing]=useState(false);
@@ -62,7 +64,7 @@ export function App(){
  const openProject=()=>{setSection('project');setSidebar(false);setSearch('');setError('');};
  const choose=(id:string)=>{setProjectId(state.threads.find(t=>t.id===id)?.project_id||'');setSelected(id);setSection('threads');setSidebar(false);setError('');};
  const attach=async(files:FileList|null)=>{if(!files||!selected)return;const target=selected;const pending=Array.from(files);if((attachments[target]?.length||0)+pending.length>4){setError('Можно прикрепить до четырёх файлов.');return;}setBusy(true);setError('');try{for(const file of pending){setUploading(file.name);const result=await uploadFile(target,file,p=>setUploading(`${file.name} · ${p}%`));setAttachments(a=>({...a,[target]:[...(a[target]||[]),result]}));}}catch(e){setError(e instanceof Error?e.message:'Не удалось загрузить файл.');}finally{setUploading('');setBusy(false);if(fileInput.current)fileInput.current.value='';}};
- const send=async()=>{const text=(drafts[selected]||'').trim();const files=(attachments[selected]||[]).map(f=>f.id);if(busy||!selected||(!text&&!files.length))return;const target=selected;if(!submission.current||submission.current.thread!==target||submission.current.text!==text||JSON.stringify(submission.current.files)!==JSON.stringify(files))submission.current={thread:target,text,id:crypto.randomUUID(),files};const current=submission.current;await action(async()=>{await sendMessage(current.thread,current.text,current.id,current.files);setDrafts(d=>({...d,[target]:''}));setAttachments(a=>({...a,[target]:[]}));submission.current=null;});};
+ const send=async()=>{const text=(drafts[selected]||'').trim();const files=(attachments[selected]||[]).map(f=>f.id);if(busy||!selected||(!text&&!files.length))return;const target=selected;if(!submission.current||submission.current.thread!==target||submission.current.text!==text||JSON.stringify(submission.current.files)!==JSON.stringify(files))submission.current={thread:target,text,id:crypto.randomUUID(),files};const current=submission.current;setSending(target);try{await action(async()=>{await sendMessage(current.thread,current.text,current.id,current.files);setDrafts(d=>({...d,[target]:''}));setAttachments(a=>({...a,[target]:[]}));submission.current=null;});}finally{setSending('');}};
  return <div className="workspace flex w-screen overflow-hidden bg-background text-foreground">
   {sidebar&&<button className="sidebar-shade" aria-label="Закрыть меню" onClick={()=>setSidebar(false)}/>}
   <aside className={'workspace-sidebar '+(sidebar?'is-open':'')}><div className="sidebar-heading"><MessageSquare size={19}/><strong>Codex Workspace</strong><button className="icon-button mobile-only" onClick={()=>setSidebar(false)} aria-label="Закрыть меню"><X size={18}/></button></div>
@@ -84,9 +86,10 @@ export function App(){
        <div className="message-meta"><span>{message.sender===state.user.id?'Вы':`Участник ${message.sender}`}</span><time>{new Date(message.created*1000).toLocaleString('ru-RU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</time></div>
        <div className="user-bubble"><Markdown>{message.text}</Markdown>{message.attachments?.map(file=><button key={file.id} className="attachment-card" disabled={busy} onClick={()=>void action(()=>downloadFile(file))}><Download size={15}/><span>{file.name}</span><small>{Math.ceil(file.size/1024)} КБ</small></button>)}</div>
        <div className={'delivery-status status-'+message.status}><span>{statusLabels[message.result_status||message.status]||message.status}</span>{owner&&message.status==='awaiting_approval'&&<div className="decision-buttons"><button disabled={busy} className="quiet" onClick={()=>void action(()=>decide(message,'rejected'))}>Отклонить</button><button disabled={busy} className="approve" onClick={()=>void action(()=>decide(message,'approved'))}><Check size={14}/>Передать в Codex</button></div>}</div>
-       <div className="response-stream">{message.events?.map((event,index)=><PublicEvent key={event.id||index} event={event} openDiff={setDiff}/>)}</div>
+       <div className="response-stream">{message.events?.map((event,index)=><PublicEvent key={event.id||index} event={event} openDiff={setDiff}/>)}{section==='threads'&&<RequestActivity message={message} online={online}/>}</div>
       </article>;})())}</div>}
    </main>
+   {section==='threads'&&sending===selected&&<div className="request-activity sending-activity" role="status">Отправляю…</div>}
    {section==='threads'&&thread?.read_only&&<p className="composer-note">Эта задача доступна только для чтения.</p>}
    {section==='threads'&&thread&&!thread.read_only&&<div className="composer-wrap"><div className="composer content-width">{attachments[selected]?.map(file=><div className="attachment-card" key={file.id}><Paperclip size={14}/><span>{file.name}</span><button className="icon-button" aria-label={"Убрать "+file.name} disabled={busy} onClick={()=>setAttachments(a=>({...a,[selected]:a[selected].filter(f=>f.id!==file.id)}))}><X size={14}/></button></div>)}{uploading&&<p className="small muted" role="status">Загрузка: {uploading}</p>}<textarea disabled={busy} aria-label="Сообщение" placeholder="Сообщение в выбранный тред…" value={drafts[selected]||''} maxLength={16000} onChange={e=>setDrafts(d=>({...d,[selected]:e.target.value}))} onKeyDown={e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();void send();}}}/><div className="composer-bottom"><input ref={fileInput} type="file" multiple hidden onChange={e=>void attach(e.target.files)}/><button className="icon-button" aria-label="Прикрепить файлы" disabled={busy||(attachments[selected]?.length||0)>=4} onClick={()=>fileInput.current?.click()}><Paperclip size={17}/></button><span className="small muted"><ShieldCheck size={13}/>{direct?'Сразу в Codex':'Через одобрение владельца'}</span><button className="send-button" disabled={busy||(!drafts[selected]?.trim()&&!attachments[selected]?.length)} onClick={()=>void send()} aria-label="Отправить"><ArrowUp size={19}/></button></div></div><p className="composer-note">{thread.title} · Ctrl / ⌘ + Enter — отправить</p></div>}
   </div>{diff&&<DiffViewerDialog item={diff} onClose={()=>setDiff(null)}/>}<Toaster/>

@@ -323,3 +323,41 @@ test('project access with task exclusion and independent task grant',async({page
  await launcher.click();await expect(launcher).toBeChecked();await expect(hd).not.toBeChecked();
  expect(f.state.members[0].threads).toEqual(['thread-launcher']);
 });
+
+test('request activity follows queue running completion and offline states',async({page})=>{
+ const f=await fixture(page);
+ await page.getByRole('textbox',{name:'Сообщение',exact:true}).fill('Status feedback');
+ await page.getByRole('button',{name:'Отправить',exact:true}).click();
+ await expect(page.getByText('В очереди Codex…',{exact:true})).toBeVisible();
+ const message=f.state.messages[0];message.status='delivered';
+ await page.getByRole('button',{name:'Обновить',exact:true}).click();
+ await expect(page.getByText('Ожидаю ответа Codex…',{exact:true})).toBeVisible();
+ message.result_status='running';
+ await page.getByRole('button',{name:'Обновить',exact:true}).click();
+ await expect(page.getByText('Думаю…',{exact:true})).toBeVisible();
+ f.state.collector_seen=0;
+ await page.getByRole('button',{name:'Обновить',exact:true}).click();
+ await expect(page.getByText('Ожидаю подключения Codex…',{exact:true})).toBeVisible();
+ message.result_status='completed';
+ await page.getByRole('button',{name:'Обновить',exact:true}).click();
+ await expect(page.locator('.request-activity')).toHaveCount(0);
+});
+
+test('member activity waits for approval without claiming execution',async({page})=>{
+ await fixture(page,'member');
+ await page.getByRole('textbox',{name:'Сообщение',exact:true}).fill('Needs approval');
+ await page.getByRole('button',{name:'Отправить',exact:true}).click();
+ await expect(page.getByText('Ожидаю одобрения…',{exact:true})).toBeVisible();
+ await expect(page.getByText('Думаю…',{exact:true})).toHaveCount(0);
+});
+
+test('activity text shimmers and respects reduced motion',async({page})=>{
+ await fixture(page);
+ await page.getByRole('textbox',{name:'Сообщение',exact:true}).fill('Shimmer feedback');
+ await page.getByRole('button',{name:'Отправить',exact:true}).click();
+ const text=page.locator('.request-activity-text');
+ await expect(text).toHaveCSS('animation-name','request-shimmer');
+ await page.emulateMedia({reducedMotion:'reduce'});
+ await expect(text).toHaveCSS('animation-name','none');
+ await expect(text).toBeVisible();
+});

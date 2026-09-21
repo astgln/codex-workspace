@@ -13,3 +13,10 @@
 .push-settings{padding:10px;display:flex;flex-direction:column;gap:6px;max-height:220px;overflow:auto;flex-shrink:0}.push-settings p{font-size:11px;line-height:1.5}
 
 .access-project{margin-top:16px;border-top:1px solid hsl(var(--border));padding-top:8px}.task-grant{padding-left:24px}
+
+.request-activity{display:flex;align-items:center;gap:9px;padding:10px 2px 16px;color:hsl(var(--muted-foreground));font-size:15px;line-height:1.5}
+.request-activity-text{display:inline-block;color:hsl(var(--muted-foreground));background:linear-gradient(110deg,hsl(var(--muted-foreground)) 35%,hsl(var(--foreground)) 50%,hsl(var(--muted-foreground)) 65%);background-size:250% 100%;background-position:150% 0;background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;animation:request-shimmer 2.4s ease-in-out infinite}
+.sending-activity{padding:0 30px 8px}
+@keyframes request-shimmer{from{background-position:150% 0}to{background-position:-150% 0}}
+@media(prefers-reduced-motion:reduce){.request-activity-text{animation:none;background:none;-webkit-text-fill-color:currentColor}}
+@media(forced-colors:active){.request-activity-text{animation:none;background:none;-webkit-text-fill-color:currentColor}}
