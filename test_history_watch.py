@@ -50,7 +50,7 @@ class WatchTests(unittest.TestCase):
    from rollout_history import read_public, READER_VERSION
    with patch('history_sync.locate',return_value=path), patch('history_sync.read_public',wraps=read_public) as reader:
     sync_once(API(),catalog,'project',Path(tmp),cache)
-   reader.assert_called_once_with(path,'task',0)
+   reader.assert_called_once_with(path,'task',0,None)
    self.assertEqual(cache['task']['reader_version'],READER_VERSION)
 
  def test_missing_journal_does_not_starve_other_tasks(self):

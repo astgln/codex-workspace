@@ -9,14 +9,15 @@ from runtime_support import BridgeError
 from cloud.quota import from_record
 
 # Bump when public-record interpretation changes; checkpoints must be replayed.
-READER_VERSION = 1
+READER_VERSION = 2
 
 
-def read_public(path, thread, start_offset=0):
+def read_public(path, thread, start_offset=0, previous_activity=None):
     if path.is_symlink():
         raise BridgeError('Session symlinks are not accepted')
     turns = {}
     quota = None
+    activity = previous_activity if start_offset else None
     with path.open('rb') as stream:
         first = stream.readline()
         try:
@@ -46,6 +47,13 @@ def read_public(path, thread, start_offset=0):
             if sample and (quota is None or sample['observed_at'] >= quota['observed_at']):
                 quota = sample
             p = record.get('payload', {})
+            if record.get('type') == 'event_msg' and p.get('type') in ('task_started', 'task_complete', 'turn_aborted'):
+                tid = p.get('turn_id')
+                if isinstance(tid, str):
+                    if p['type'] == 'task_started':
+                        activity = {'turn_id': tid, 'state': 'active'}
+                    elif activity is None or activity.get('turn_id') == tid:
+                        activity = {'turn_id': tid, 'state': 'idle'}
             if record.get('type') != 'event_msg' or p.get('type') != 'item_completed' or p.get('thread_id') != thread:
                 continue
             tid, item = p.get('turn_id'), p.get('item', {})
@@ -73,4 +81,4 @@ def read_public(path, thread, start_offset=0):
                 entry.update(text=text, phase=item['phase'])
             turn['items'].append(entry)
     return {'thread': {'id': thread}, 'turns': list(turns.values()),
-            'weekly_quota': quota, 'source_offset': committed, 'page': {'hasMore': False, 'nextCursor': None}}
+            'activity': activity, 'weekly_quota': quota, 'source_offset': committed, 'page': {'hasMore': False, 'nextCursor': None}}

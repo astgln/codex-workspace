@@ -85,3 +85,39 @@ atomically installed as the common catalog for both local services. Existing
 read-only restrictions and entries absent from the bounded listing were retained.
 The catalog now contains 22 tasks. This is an explicit maintenance refresh, not
 an autonomous discovery implementation and not a replacement for that requirement.
+
+## Autonomous desktop catalog and turn activity
+
+The previous catalog-source blocker is resolved by a read-only desktop adapter.
+The installed desktop bundle explicitly uses `local-projects` and
+`thread-project-assignments` in its persisted global state. These exact identities,
+joined with nonarchived named task rows in SQLite, reproduce all 22 tasks and six
+projects in the app-tool snapshot, including titles. SQLite project IDs, cwd and
+raw first-message titles are deliberately not used to infer membership.
+
+The existing history service now refreshes this catalog automatically. Successful
+publication precedes atomic replacement of the shared worker snapshot. Existing
+read-only flags survive refresh. Archived/projectless tasks are removed; explicit
+project moves follow desktop assignments and server access rules. Unknown schemas,
+unresolved identities, concurrent state changes and publication errors preserve
+the last good snapshot. This adapter depends on private desktop persistence and
+fails closed if an app update changes its schema; it is not a supported public API.
+
+Journal reader version 2 checkpoints turn lifecycle evidence independently of
+public messages. A running turn is marked active only while its writer lock is
+held. Matching completion/abort clears activity; unrelated turn completion cannot
+clear a newer turn. Missing evidence or a released writer produces unknown, not a
+stale active claim. This represents observed turn execution, not an overarching
+goal's status or an authoritative desktop process-status API.
+
+Validation: 228 Python tests pass, including explicit project movement, archive
+and projectless exclusion, preserved restrictions, publication/schema failure and
+incremental activity identity. Live read-only discovery matched all existing
+catalog identities and names. Only the history launchd service was restarted;
+Codex desktop and its running tasks were not restarted. Participant and installed
+iPhone push acceptance remain pending because both testers are unavailable.
+
+Live follow-up: the service completed replay of all 22 version-2 checkpoints;
+its pass reported 5,358 messages, zero failed tasks and zero failed services,
+then incremental publication resumed. The initial partial pass recovered without
+restarting the worker or resending any user request.

@@ -20,10 +20,13 @@ def sync_thread(api, ident, root, cache, pending):
         if ident in pending:
             publish(api, {'thread': {'id': ident}, 'turns': []}, 'latest')
         return 0
-    read = read_public(path, ident, offset)
+    read = read_public(path, ident, offset, previous.get("activity"))
     publish(api, read, 'older' if offset == 0 else 'latest')
     checkpoint = {'checkpoint_version':1, 'reader_version':READER_VERSION,
                   'file':fingerprint, 'offset':read['source_offset']}
+    activity = read.get('activity') or (previous.get('activity') if offset else None)
+    if activity:
+        checkpoint['activity'] = activity
     quota = read.get('weekly_quota') or previous.get('pending_quota')
     if quota:
         checkpoint['pending_quota'] = quota

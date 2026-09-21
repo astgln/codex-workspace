@@ -11,6 +11,7 @@ import time
 from runtime_support import BridgeError, exclusive
 from workspace_client import API, STATE
 from history_sync import sync_once
+from desktop_catalog import refresh
 
 
 def main():
@@ -35,11 +36,12 @@ def main():
                 config = json.loads((args.state/'web.json').read_text())
                 if config.get('paused', True):
                     return
-                catalog = json.loads(args.catalog.read_text())
                 cache = json.loads(cache_path.read_text()) if cache_path.exists() else {}
+                api = API(config)
+                catalog = refresh(api, args.catalog, root.parent, cache)
                 failures = {}
                 service_failures = {}
-                count = sync_once(API(config), catalog, config['project_id'], root, cache, failures, service_failures)
+                count = sync_once(api, catalog, config['project_id'], root, cache, failures, service_failures)
                 temp = cache_path.with_suffix('.tmp')
                 temp.write_text(json.dumps(cache));temp.replace(cache_path)
                 partial = bool(failures or service_failures)
