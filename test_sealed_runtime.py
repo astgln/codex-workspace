@@ -38,7 +38,7 @@ class SealedRuntimeTests(unittest.TestCase):
         self.runtime.publish(ident,{'thread':'task','marker':dispatch['marker'],'turn_id':'new','status':'completed','events':[{'type':'agent_message','id':'a','text':'private answer'}]})
         from queue_transport import publish_results
         publish_results(self.runtime,self.runtime.api)
-        path,body=next(call.args for call in self.api.call.call_args_list if call.args[0]=='/v2/e2ee/publish' and call.args[1]['envelope']['context'][2]=='response')
+        path,body=next(call.args for call in self.api.call.call_args_list if call.args[0]=='/v2/e2ee/publish' and call.args[1]['envelope']['context'][2]=='response' and call.args[1]['envelope']['context'][4]>1)
         self.assertEqual(path,'/v2/e2ee/publish')
         self.assertNotIn('private answer',json.dumps(body))
         self.assertEqual(body['envelope']['context'][3],self.intent['request_id'])

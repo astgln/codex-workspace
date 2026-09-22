@@ -79,7 +79,7 @@ export async function encryptedState():Promise<ModeState>{
    const payload=await assembleResponse(entry.value,responses) as {attachment_signer:string;request:{thread:string;text:string;created:number;attachments:AttachmentManifest[]};result:{id:number;status:string;events:Message['events']}};
    if(!payload?.request||payload.request.thread!==thread.id||!payload.result)throw new Error('Некорректный зашифрованный ответ.');
    messages.push({id:payload.result.id,sender:Number(s.account),thread:thread.id,text:payload.request.text,created:payload.request.created,
-     expires:0,status:'delivered',snapshot:record,result_status:payload.result.status,events:payload.result.events,attachments:payload.request.attachments});
+     expires:0,status:payload.result.status==='queued'?'queued':'delivered',snapshot:record,result_status:payload.result.status,events:payload.result.events,attachments:payload.request.attachments});
    for(const manifest of payload.request.attachments){
     const previous=downloads.get(manifest.id);
     if(previous&&JSON.stringify(previous)!==JSON.stringify({scope:thread.id,manifest,signer:payload.attachment_signer}))throw new Error('Идентификатор вложения повторён.');

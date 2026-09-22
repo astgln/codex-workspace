@@ -76,6 +76,8 @@ class SealedRuntime:
             if (isinstance(item.get('encrypted_envelope'), dict) and item['thread'] in self.scopes
                     and item.get('attachments') and not json.loads(row['files'])):
                 self.sealed.download_files(self.channel.api, row['id'])
+            if isinstance(item.get('encrypted_envelope'),dict) and item['thread'] in self.scopes:
+                self.api.call('/v2/responses',{'id':item['id'],'thread':item['thread'],'revision':0,'status':'queued','events':[]})
         return self.status()
 
 
@@ -101,7 +103,7 @@ class EncryptedWorkerAPI:
         payload = {'request': {k: item[k] for k in ('thread', 'text', 'created', 'attachments')},
                    'attachment_signer': encode(signer['public_key']), 'result': body}
         from sealed_payload import publish as publish_payload
-        result=publish_payload(self.runtime.channel,item['thread'],item['request_id'],body['revision'],payload)
+        result=publish_payload(self.runtime.channel,item['thread'],item['request_id'],body['revision']+1,payload)
         if body.get('status')=='completed':
             from sealed_push import publish
             text=next((event.get('text','') for event in reversed(body.get('events',[])) if event.get('type')=='agent_message'),'')
