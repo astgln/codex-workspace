@@ -1,5 +1,6 @@
 /* Workspace shell adapted from LuSeptem/codex-webui AppShell; MIT notice in licenses/. */
 import { useEffect, useState } from 'react';
+import {PairingScreen} from './crypto/PairingScreen';
 import { ChevronDown, ChevronRight, Circle, Folder, LogOut, Menu, MessageSquare, Moon, RefreshCw, Sun, X } from 'lucide-react';
 import { DiffViewerDialog } from './components/diff/DiffViewerDialog';
 import { useThreadHistory } from './History';
@@ -17,7 +18,8 @@ import { useComposer } from './workspace/useComposer';
 import { LoginPage } from './workspace/LoginPage';
 import { Conversation } from './workspace/Conversation';
 
-export function App(){
+export function App({initialPairingFragment=''}:{initialPairingFragment?:string}){
+ const [pairingFragment,setPairingFragment]=useState(initialPairingFragment);
  const {state,checking,busy,setBusy,error,setError,resetVersion,config,preparing,prepare,refresh,action,enter,logout,cancelLogin}=useWorkspaceSession();
  const {projectExpanded,setProjectExpanded,selected,section,sidebar,setSidebar,search,setSearch,projects,thread,activeProject,projectThreads,openProject,choose,chooseProject}=useWorkspaceNavigation(state,resetVersion,setError);
  const [diff,setDiff]=useState<FileChangeItem|null>(null);
@@ -29,6 +31,7 @@ export function App(){
  const history=useThreadHistory(selected,Boolean(state)&&section==='threads');
  const scroll=useConversationScroll(state&&section==='threads'?`${state.user.id}:${selected}`:'',Boolean(history.page),history.page?.before||null,before=>void history.refresh(before));
  if(!state)return <LoginPage checking={checking} ready={Boolean(config)} busy={busy} preparing={preparing} error={error} enter={enter} cancel={cancelLogin} prepare={prepare}/>;
+ if(pairingFragment)return <PairingScreen key={String(state.user.id)} account={String(state.user.id)} fragment={pairingFragment} close={()=>setPairingFragment('')}/>;
  const online=state.collector_seen!==null&&Date.now()/1000-state.collector_seen<600;
  return <div className="workspace flex w-screen overflow-hidden bg-background text-foreground">
   {sidebar&&<button className="sidebar-shade" aria-label="Закрыть меню" onClick={()=>setSidebar(false)}/>}

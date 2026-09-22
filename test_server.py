@@ -26,6 +26,19 @@ class ServerTests(unittest.TestCase):
         self.client.__exit__(None,None,None)
         self.keys.stop();self.env.stop();self.temp.cleanup()
 
+    def test_pairing_requires_owner_csrf_and_collector_registration(self):
+        from workspace_crypto import encode
+        body={'workspace':encode(b'w'*32),'id':encode(b'i'*32),'expires':int(time.time())+600}
+        self.assertEqual(self.client.post('/v2/e2ee/pairing/register',json=body).status_code,401)
+        self.assertEqual(self.client.post('/v2/e2ee/pairing/register',json=body,headers={'Authorization':'Bearer collector-test-key'}).status_code,200)
+        query={k:body[k] for k in ('workspace','id')}
+        self.assertEqual(self.client.post('/web/e2ee/pairing/read',json=query).status_code,401)
+        _,csrf=self.browser_session()
+        self.assertEqual(self.client.post('/web/e2ee/pairing/read',json=query).status_code,403)
+        headers={'X-CSRF-Token':csrf}
+        self.assertEqual(self.client.post('/web/e2ee/pairing/read',json=query,headers=headers).json(),{'payload':None})
+        self.assertEqual(self.client.post('/web/e2ee/pairing/register',json=body,headers=headers).status_code,400)
+
     def test_encrypted_files_require_browser_session_csrf_and_collector_token(self):
         from workspace_crypto import encode
         body={'workspace':'workspace','scope':'task','id':encode(b'f'*32),'size':3,'sha256':hashlib.sha256(b'abc').hexdigest()}

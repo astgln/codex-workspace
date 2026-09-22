@@ -121,6 +121,23 @@ async def handle(request: Request, path: str):
         return Response('{"error":"access_denied"}',status_code=403,media_type='application/json',headers={'Cache-Control':'no-store'})
     if path == 'health':
         result = api.response(200,{'status':'ok','mode':'standalone-web'})
+    elif path.startswith('web/e2ee/pairing/') or path.startswith('v2/e2ee/pairing/'):
+        from . import opaque, pairing
+        try:
+            if request.method != 'POST':return Response(status_code=405)
+            collector = path.startswith('v2/')
+            if collector:
+                if not api.authorized(event):raise workspace.Unauthorized()
+            else:
+                allowed = await run_in_threadpool(store.mutate, lambda state: workspace.is_owner(state,uid,os.environ['OWNER_USERNAME']))
+                if not allowed:raise workspace.Forbidden()
+            value = await run_in_threadpool(pairing.handle,store,path.rsplit('/',1)[1],json.loads(body),collector=collector)
+            result=api.response(200,value)
+        except workspace.Unauthorized:result=api.response(401,{'error':'login_required'})
+        except workspace.Forbidden:result=api.response(403,{'error':'access_denied'})
+        except opaque.Conflict:result=api.response(409,{'error':'pairing_conflict'})
+        except (ValueError,TypeError,RecursionError):result=api.response(400,{'error':'invalid_pairing'})
+        except Exception:result=api.response(503,{'error':'temporarily_unavailable'})
     elif path.startswith('web/e2ee/files/') or path.startswith('v2/e2ee/files/'):
         from . import opaque, opaque_files
         try:

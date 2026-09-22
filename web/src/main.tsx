@@ -1,10 +1,12 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import {consumePairingFragment} from './crypto/PairingScreen';
 import { ToastProvider } from './stores/toast';
 import { LanguageProvider } from './components/i18n/LanguageProvider';
 import './upstream.css';
 import 'katex/dist/katex.min.css';
 import './workspace.css';
 import './chat-appearance.css';
-createRoot(document.getElementById('root')!).render(<React.StrictMode><LanguageProvider><ToastProvider><App/></ToastProvider></LanguageProvider></React.StrictMode>);
+const initialPairingFragment=consumePairingFragment();
+createRoot(document.getElementById('root')!).render(<React.StrictMode><LanguageProvider><ToastProvider><App initialPairingFragment={initialPairingFragment}/></ToastProvider></LanguageProvider></React.StrictMode>);
