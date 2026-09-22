@@ -55,7 +55,9 @@ def handle(store, uid, action, body, *, collector=False):
                                (*identity,uid,body['size'],body['sha256'],int(time.time())))
                 db.commit()
                 return {'id':identity[2],'chunk_size':CHUNK}
-            if row is None or not collector and row[0]!=uid:raise Invalid('Encrypted upload unavailable')
+            # Authenticated readers can fetch ciphertext; task keys and signed
+            # manifests authorize opening it. Only the uploader may mutate it.
+            if row is None or not collector and action not in ('describe','get') and row[0]!=uid:raise Invalid('Encrypted upload unavailable')
             # Never derive filesystem components from arbitrary workspace/scope text.
             address=hashlib.sha256(json.dumps(identity,separators=(',',':')).encode()).hexdigest()
             directory=store.directory/'encrypted-uploads'/address

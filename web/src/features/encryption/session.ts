@@ -5,6 +5,8 @@ import {refreshDeviceKeys,readVerifiedRecords} from './records';
 import {decode} from './envelope';
 import type {AttachmentManifest} from './attachments';
 
+import {encryptedControl} from './devices';
+
 type ModeState=WorkspaceState&{encryption?:{v:number;workspace:string};encryption_locked?:boolean};
 type Session={state:ModeState;account:string;workspace:string;device:Device|null};
 let session:Session|null=null;
@@ -62,7 +64,10 @@ export async function encryptedState():Promise<ModeState>{
  if(initial.device.bundle.origin!==location.origin)throw new Error('Ключи выданы другому сайту.');
  await stored('pins',initial.account,initial.workspace);check(initial);
  const s=current();s.device.bundle=await refreshDeviceKeys(s.device);check(s);
- const catalog=await readVerifiedRecords(s.device,'workspace','catalog');check(s);
+ const ownCatalog=await readVerifiedRecords(s.device,'device:'+s.device.deviceStamp,'catalog');check(s);
+ const access=ownCatalog.get('access')?.value as {user:WorkspaceState['user'];members:WorkspaceState['members']}|undefined;
+ if(!access||String(access.user?.id)!==s.account)throw new Error('Ожидаем подтверждённые права устройства с ноутбука.');
+ const catalog=access.user.role==='owner'?await readVerifiedRecords(s.device,'workspace','catalog'):ownCatalog;check(s);
  const index=catalog.get('index')?.value as {projects:string[];threads:string[];updated_at:number}|undefined;
  if(!index||!Array.isArray(index.projects)||!Array.isArray(index.threads))throw new Error('Ожидаем зашифрованный каталог с ноутбука.');
  const all=[...catalog.values()].map(x=>x.value) as Record<string,unknown>[];
@@ -73,14 +78,14 @@ export async function encryptedState():Promise<ModeState>{
   const responses=await readVerifiedRecords(s.device,thread.id,'response');check(s);
   for(const [record,entry] of responses){
    if(record.startsWith('part:')||record.startsWith('dispatch:'))continue;
-   const payload=await assembleResponse(entry.value,responses) as {attachment_signer:string;request:{thread:string;text:string;created:number;attachments:AttachmentManifest[]};result:{id:number;status:string;events:Message['events']}};
+   const payload=await assembleResponse(entry.value,responses) as {attachment_signer:string;request:{thread:string;text:string;created:number;sender:number;snapshot:string;attachments:AttachmentManifest[]};result:{id:number;status:string;events:Message['events']}};
    if(!payload?.request||payload.request.thread!==thread.id||!payload.result)throw new Error('Некорректный зашифрованный ответ.');
    const dispatch=responses.get('dispatch:'+record)?.value as {reason?:string;observed_at?:number}|undefined;
    const waiting=payload.result.status==='queued'&&dispatch?.observed_at&&Date.now()/1000-dispatch.observed_at<120
      ? dispatch.reason:undefined;
    const status=waiting==='desktop_writer_lock'?'waiting_for_task':waiting==='task_settings_unavailable'?'waiting_for_settings':payload.result.status;
-   messages.push({id:payload.result.id,sender:Number(s.account),thread:thread.id,text:payload.request.text,created:payload.request.created,
-     expires:0,status:payload.result.status==='queued'?'queued':'delivered',snapshot:record,result_status:status,events:payload.result.events,attachments:payload.request.attachments});
+   messages.push({id:payload.result.id,sender:payload.request.sender,thread:thread.id,text:payload.request.text,created:payload.request.created,
+     expires:0,status:['queued','awaiting_approval','rejected'].includes(payload.result.status)?payload.result.status:'delivered',snapshot:payload.request.snapshot,result_status:status,events:payload.result.events,attachments:payload.request.attachments});
    for(const manifest of payload.request.attachments){
     const previous=downloads.get(manifest.id);
     if(previous&&JSON.stringify(previous)!==JSON.stringify({scope:thread.id,manifest,signer:payload.attachment_signer}))throw new Error('Идентификатор вложения повторён.');
@@ -90,7 +95,7 @@ export async function encryptedState():Promise<ModeState>{
   }
  }
  const quota=catalog.get('quota')?.value as WorkspaceState['weekly_quota'];
- return {...s.state,projects,threads,messages:[...messages,...pending.values()],weekly_quota:quota,catalog_updated:index.updated_at,collector_seen:index.updated_at,encryption_locked:false};
+ return {...s.state,user:access.user,members:access.members,projects,threads,messages:[...messages,...pending.values()],weekly_quota:quota,catalog_updated:index.updated_at,collector_seen:index.updated_at,encryption_locked:false};
 }
 
 export async function encryptedHistory(thread:string,_before?:string):Promise<HistoryPage>{

@@ -11,7 +11,8 @@ from codex_workspace.crypto.key_material import public_key
 
 
 class SealedQueue:
-    def __init__(self, directory, vault):
+    def __init__(self, directory, vault, *, authorization=None):
+        self.authorization=authorization
         self.queue = Queue(directory)
         try:
             self.trust = TrustStore(directory / 'web-queue.sqlite3', vault.workspace)
@@ -44,8 +45,11 @@ class SealedQueue:
                        'request_id':request['request_id'],'created':request['issued_at'],
                        'expires':request['expires_at'],'attachments':request['attachments'],
                        'snapshot':hashlib.sha256(canonical.encode()).hexdigest(),'encrypted_envelope':envelope}
-            db.execute("INSERT INTO requests(id,payload,status) VALUES(?,?,'pending')",
-                       (local_id,json.dumps(payload,ensure_ascii=False)))
+            policy=self.authorization(envelope['signer'],scope,None) if self.authorization else {'requires_approval':False}
+            payload.update(policy)
+            status='awaiting_approval' if policy['requires_approval'] else 'pending'
+            db.execute('INSERT INTO requests(id,payload,status) VALUES(?,?,?)',
+                       (local_id,json.dumps(payload,ensure_ascii=False),status))
 
         self.trust.accept_request(decode(current['key'],maximum=32), expected, envelope, now=now, persist=persist)
         return local_id
@@ -103,6 +107,7 @@ class SealedQueue:
         if (item['thread'] != thread or item['text'] != request['text'] or item['attachments'] != request['attachments']
                 or item['snapshot'] != hashlib.sha256(canonical.encode()).hexdigest()):
             raise CryptoError('Encrypted queue intent changed')
+        if self.authorization:self.authorization(envelope['signer'],thread,item)
         return request,signer_key
 
     def download_files(self,api,ident,*,now=None):

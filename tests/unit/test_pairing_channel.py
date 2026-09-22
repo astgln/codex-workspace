@@ -57,3 +57,23 @@ class PairingChannelTests(unittest.TestCase):
         body={k:invite[k] for k in ('workspace','id','expires')}
         with self.assertRaises(opaque.Invalid):pairing.handle(self.store,'register',body)
         with self.assertRaises(opaque.Invalid):pairing.handle(self.store,'register',dict(body,secret=invite['secret']),collector=True)
+
+    def test_member_pairing_never_issues_owner_key(self):
+        from codex_workspace.devices.sealed_access import LocalAccess
+        from codex_workspace.crypto.workspace_crypto import CryptoError,signer_id
+        from codex_workspace.crypto.key_material import public_key
+        LocalAccess(self.vault,self.trust).bootstrap(10,[{'id':20,'username':'member'}])
+        invite,_=self.channel.invite()
+        device=ec.generate_private_key(ec.SECP256R1())
+        offer=seal(decode(invite['secret'],maximum=32),device,
+                   Context(invite['workspace'],'devices','key-wrap',invite['id'],1),b'codex-workspace/device-pairing/v1')
+        pairing.handle(self.store,'offer',{'workspace':invite['workspace'],'id':invite['id'],
+            'public_key':encode(public_bytes(device)),'envelope':offer})
+        self.vault.scope_key('task');self.vault.scope_key('workspace')
+        with self.assertRaises(CryptoError):self.channel.poll(invite['id'],{'workspace','task'},member_uid=20)
+        self.assertEqual(self.trust.db.execute('SELECT count(*) FROM devices').fetchone()[0],0)
+        self.assertTrue(self.channel.poll(invite['id'],{'task'},member_uid=20))
+        ident=signer_id(public_key(encode(public_bytes(device))))
+        self.assertEqual(self.trust.db.execute('SELECT uid FROM encrypted_device_members WHERE device=?',(ident,)).fetchone()[0],20)
+        self.assertEqual(json.loads(self.trust.db.execute('SELECT scopes FROM device_grants WHERE device=?',(ident,)).fetchone()[0]),['task'])
+        self.assertTrue(self.channel.poll(invite['id'],{'task'},member_uid=20))

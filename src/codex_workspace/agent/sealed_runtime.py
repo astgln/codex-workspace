@@ -9,7 +9,8 @@ from codex_workspace.crypto.workspace_crypto import CryptoError, encode
 
 class SealedRuntime:
     def __init__(self, directory, vault, api, catalog):
-        self.sealed = SealedQueue(directory, vault)
+        self.catalog=catalog
+        self.sealed = SealedQueue(directory, vault,authorization=self.authorization)
         self.queue = self.sealed.queue
         self.db, self.state = self.queue.db, self.queue.state
         self.channel = SealedChannel(api, vault)
@@ -35,9 +36,17 @@ class SealedRuntime:
                     'reason':waiting.get(row['id']), 'observed_at':int(time.time())})
             self.channel.snapshot('workspace','catalog','worker',{
                 'worker':{**summary(result),'observed_at':int(time.time())},
-                'queue':{'queued':counts.get('pending',0)},
+                'queue':{'approved':counts.get('pending',0),'awaiting_approval':counts.get('awaiting_approval',0)},
                 'completed':counts.get('complete',0)})
         except (BridgeError,OSError,ValueError,KeyError):pass
+    def authorization(self,signer,thread,item):
+        from codex_workspace.devices.sealed_access import LocalAccess
+        policy=LocalAccess(self.channel.vault,self.sealed.trust)
+        result=policy.authorize(signer,thread,self.catalog)
+        if item is not None:
+            if item.get('sender')!=result['sender']:raise CryptoError('Request author changed')
+            policy.check_decision(item,self.catalog)
+        return result
 
     def close(self):
         self.sealed.__exit__(None, None, None)
@@ -66,10 +75,18 @@ class SealedRuntime:
         from codex_workspace.agent.queue_transport import publish_results
         from codex_workspace.devices.device_keys import DeviceKeys
         delivery=DeviceKeys(self.channel.vault,self.sealed.trust,self.channel)
+        from codex_workspace.devices.sealed_access import LocalAccess
+        policy=LocalAccess(self.channel.vault,self.sealed.trust)
+        # Resume durable local transitions before exporting any key material.
+        policy.reconcile()
+        delivery.reconcile()
         delivery.sync_owner_scopes(self.catalog_scopes)
-        delivery.publish()
         from codex_workspace.devices.device_control import DeviceControl
-        DeviceControl(self.channel.vault,self.sealed.trust,self.channel).tick(self.catalog_scopes)
+        DeviceControl(self.channel.vault,self.sealed.trust,self.channel,self.catalog).tick(self.catalog_scopes)
+        from codex_workspace.devices.sealed_access import LocalAccess
+        policy.sync_catalog(self.catalog)
+        delivery.publish()
+        policy.publish(self.catalog,self.channel)
         from codex_workspace.devices.auth_registry import publish as publish_auth
         publish_auth(self.channel.api,self.channel.vault,self.sealed.trust)
         publish_results(self, self.api)
@@ -92,13 +109,13 @@ class SealedRuntime:
                 with self.db:
                     self.db.execute('INSERT INTO encrypted_cursors VALUES(?,?) ON CONFLICT(scope) DO UPDATE SET position=excluded.position',
                                     (scope, entry['sequence']))
-        for row in self.db.execute("SELECT id,payload,files FROM requests WHERE status='pending'").fetchall():
+        for row in self.db.execute("SELECT id,payload,files,status FROM requests WHERE status IN ('pending','awaiting_approval','rejected')").fetchall():
             item = json.loads(row['payload'])
             if (isinstance(item.get('encrypted_envelope'), dict) and item['thread'] in self.scopes
-                    and item.get('attachments') and not json.loads(row['files'])):
+                    and row['status']=='pending' and item.get('attachments') and not json.loads(row['files'])):
                 self.sealed.download_files(self.channel.api, row['id'])
             if isinstance(item.get('encrypted_envelope'),dict) and item['thread'] in self.scopes:
-                self.api.call('/v2/responses',{'id':item['id'],'thread':item['thread'],'revision':0,'status':'queued','events':[]})
+                self.api.call('/v2/responses',{'id':item['id'],'thread':item['thread'],'revision':0,'status':'queued' if row['status']=='pending' else row['status'],'events':[]})
         return self.status()
 
 
@@ -121,10 +138,10 @@ class EncryptedWorkerAPI:
             'SELECT public_key FROM devices WHERE id=?', (item['encrypted_envelope']['signer'],)).fetchone()
         if signer is None:
             raise CryptoError('Response signer is unavailable locally')
-        payload = {'request': {k: item[k] for k in ('thread', 'text', 'created', 'attachments')},
+        payload = {'request': {k: item[k] for k in ('thread', 'text', 'created', 'attachments', 'sender', 'snapshot', 'requires_approval')},
                    'attachment_signer': encode(signer['public_key']), 'result': body}
         from codex_workspace.agent.sealed_payload import publish as publish_payload
-        result=publish_payload(self.runtime.channel,item['thread'],item['request_id'],body['revision']+1,payload)
+        result=publish_payload(self.runtime.channel,item['thread'],item['request_id'],body['revision']+3 if body['revision'] else {'awaiting_approval':1,'queued':2,'rejected':2}[body['status']],payload)
         if body.get('status')=='completed':
             from codex_workspace.agent.sealed_push import publish
             text=next((event.get('text','') for event in reversed(body.get('events',[])) if event.get('type')=='agent_message'),'')

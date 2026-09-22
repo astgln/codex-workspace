@@ -45,14 +45,15 @@ test('encrypted session restores catalog/history, sends only ciphertext and reje
    const k=keys.find(k=>k.scope===scope)!;const list=records[scope+':'+kind]??=[];
    list.push({sequence:list.length+1,envelope:await c.seal(c.decode(k.key,32),root,[workspace,scope,kind,record,1],new TextEncoder().encode(JSON.stringify(payload)))});
   };
+  await add('device:'+device.deviceStamp,'catalog','access',{user:{id:10,role:'owner',requires_approval:false},members:[]});
   await add('workspace','catalog','index',{projects:['project'],threads:['task'],updated_at:1000});
   await add('workspace','catalog','project:abc',{id:'project',title:'private project'});
   await add('workspace','catalog','task:task',{id:'task',title:'private task',status:'idle',project_id:'project'});
   await add('task','history','message',{id:'message',position:'001',role:'assistant',text:'private old answer',created:900});
   await add('task','history','checkpoint',{synced_at:1000});
-  await add('task','response','request',{request:{thread:'task',text:'private old request',created:999,attachments:[]},result:{id:-1,status:'completed',events:[]}});
+  await add('task','response','request',{request:{sender:10,snapshot:'snapshot',thread:'task',text:'private old request',created:999,attachments:[]},result:{id:-1,status:'completed',events:[]}});
   await add('task','response','dispatch:request',{reason:'desktop_writer_lock',observed_at:Math.floor(Date.now()/1000)});
-  await add('task','response','waiting',{request:{thread:'task',text:'waiting request',created:999,attachments:[]},result:{id:-2,status:'queued',events:[]}});
+  await add('task','response','waiting',{request:{thread:'task',sender:10,text:'waiting request',created:999,attachments:[]},result:{id:-2,status:'queued',events:[]}});
   await add('task','response','dispatch:waiting',{reason:'desktop_writer_lock',observed_at:Math.floor(Date.now()/1000)});
   await add('task','push','preview',{thread:'task',title:'private notification',body:'private push text',created:Math.floor(Date.now()/1000)});
   (window as any).invitationReply=async(record:string)=>{
