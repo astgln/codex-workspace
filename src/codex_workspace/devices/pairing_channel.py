@@ -19,7 +19,8 @@ class PairingChannel:
         fragment = encode(json.dumps(invitation, separators=(',', ':')).encode())
         return invitation, self.vault.origin + '/#pair=' + fragment
 
-    def poll(self, invitation_id: str, scopes: set[str]):
+    def poll(self, invitation_id: str, scopes: set[str], *, member_uid=None):
+        if member_uid is not None and (type(member_uid) is not int or member_uid<=0 or 'workspace' in scopes):raise CryptoError('Invalid member enrollment')
         decode(invitation_id, maximum=32, exact=32)
         body = {'workspace': self.vault.workspace, 'id': invitation_id}
         result = self.api.call('/v2/e2ee/pairing/read', body)
@@ -51,5 +52,11 @@ class PairingChannel:
         grant = self.trust.pair(invitation_id, public, offer['envelope'], self.vault.authority,
                                 self.vault.bundle(public, scopes | {scope}), expected_origin=self.vault.origin)
         DeviceKeys(self.vault,self.trust,SealedChannel(self.api,self.vault)).configure(signer_id(public_key(offer['public_key'])),scopes)
+        if member_uid is not None:
+            if type(member_uid) is not int or member_uid<=0 or 'workspace' in scopes:raise CryptoError('Invalid member enrollment')
+            ident=signer_id(public_key(offer['public_key']))
+            previous=self.trust.db.execute('SELECT uid FROM encrypted_device_members WHERE device=?',(ident,)).fetchone()
+            if previous and previous['uid']!=member_uid:raise CryptoError('Device account binding changed')
+            self.trust.db.execute('INSERT OR IGNORE INTO encrypted_device_members VALUES(?,?)',(ident,member_uid))
         self.api.call('/v2/e2ee/pairing/grant', dict(body, envelope=grant))
         return True

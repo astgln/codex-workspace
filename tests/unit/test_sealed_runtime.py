@@ -19,13 +19,18 @@ class SealedRuntimeTests(unittest.TestCase):
         self.vault=KeyVault.create(self.root/'keys.db','https://workspace.example');self.addCleanup(self.vault.db.close)
         self.key=self.vault.scope_key('task')
         self.api=Mock(url=self.vault.origin)
-        self.runtime=SealedRuntime(self.root,self.vault,self.api,{'threads':[{'id':'task'}]});self.addCleanup(self.runtime.close)
+        self.runtime=SealedRuntime(self.root,self.vault,self.api,{'projects':[], 'threads':[{'id':'task'}]});self.addCleanup(self.runtime.close)
         self.device=ec.generate_private_key(ec.SECP256R1())
-        self.runtime.sealed.trust.trust_device(public_bytes(self.device))
+        ident=self.runtime.sealed.trust.trust_device(public_bytes(self.device))
+        from codex_workspace.devices.device_keys import DeviceKeys
+        from codex_workspace.devices.sealed_access import LocalAccess
+        self.vault.scope_key('workspace')
+        DeviceKeys(self.vault,self.runtime.sealed.trust,self.runtime.channel).configure(ident,{'workspace','task'})
+        LocalAccess(self.vault,self.runtime.sealed.trust).bootstrap(10,[])
         now=int(time.time());record=encode(secrets.token_bytes(32))
         self.intent={'v':1,'workspace':self.vault.workspace,'thread':'task','request_id':record,'issued_at':now,'expires_at':now+600,'text':'private request','attachments':[]}
         self.envelope=seal(decode(self.key['key'],maximum=32),self.device,Context(self.vault.workspace,'task','request',record,1),json.dumps(self.intent).encode())
-        self.api.call.return_value={'records':[{'sequence':1,'envelope':self.envelope}],'after':1,'more':False}
+        self.api.call.side_effect=lambda path,body: ({'records':[{'sequence':1,'envelope':self.envelope}],'after':1,'more':False} if body.get('kind')=='request' else {'records':[],'after':0,'more':False}) if path=='/v2/e2ee/read' else {'sequence':1,'duplicate':False}
 
     def test_crash_between_intake_and_cursor_does_not_duplicate_execution(self):
         self.runtime.sealed.receive('task',{'envelope':self.envelope})
@@ -38,7 +43,7 @@ class SealedRuntimeTests(unittest.TestCase):
         self.runtime.publish(ident,{'thread':'task','marker':dispatch['marker'],'turn_id':'new','status':'completed','events':[{'type':'agent_message','id':'a','text':'private answer'}]})
         from codex_workspace.agent.queue_transport import publish_results
         publish_results(self.runtime,self.runtime.api)
-        path,body=next(call.args for call in self.api.call.call_args_list if call.args[0]=='/v2/e2ee/publish' and call.args[1]['envelope']['context'][2]=='response' and call.args[1]['envelope']['context'][4]>1)
+        path,body=next(call.args for call in self.api.call.call_args_list if call.args[0]=='/v2/e2ee/publish' and call.args[1]['envelope']['context'][2]=='response' and call.args[1]['envelope']['context'][4]>3)
         self.assertEqual(path,'/v2/e2ee/publish')
         self.assertNotIn('private answer',json.dumps(body))
         self.assertEqual(body['envelope']['context'][3],self.intent['request_id'])

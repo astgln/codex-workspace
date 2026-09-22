@@ -122,9 +122,10 @@ class KeyVault:
         return {'scope': scope, 'epoch': epoch, 'key': encode(raw), 'id': key_id(raw)}
 
     def assert_ready(self):
-        table=self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='key_transition'").fetchone()
-        if table and self.db.execute('SELECT 1 FROM key_transition').fetchone():
-            raise CryptoError('Interrupted key transition requires local reconciliation')
+        for name in ('key_transition','acl_transition'):
+            table=self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",(name,)).fetchone()
+            if table and self.db.execute('SELECT 1 FROM '+name).fetchone():
+                raise CryptoError('Interrupted key transition requires local reconciliation')
 
     def active_key(self, scope: str):
         """Requests must use the current epoch, never a relay-selected old key."""

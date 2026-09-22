@@ -76,7 +76,10 @@ class SealedAttachmentsTests(unittest.TestCase):
         self.start()
         with self.assertRaises(Invalid):opaque_files.handle(self.store,42,'finish',self.identity)
         self.upload()
-        with self.assertRaises(Invalid):opaque_files.handle(self.store,99,'describe',self.identity)
+        # Shared task readers receive only ciphertext metadata; uploader owns writes.
+        self.assertEqual(opaque_files.handle(self.store,99,'describe',self.identity)['id'],self.identity['id'])
+        with self.assertRaises(Invalid):opaque_files.handle(self.store,99,'finish',self.identity)
+        with self.assertRaises(Invalid):opaque_files.handle(self.store,99,'chunk',{**self.identity,'index':0,'data':encode(b'x')})
         changed=encode(b'x'*opaque_files.CHUNK)
         with self.assertRaises(Conflict):
             opaque_files.handle(self.store,42,'chunk',{**self.identity,'index':0,'data':changed})

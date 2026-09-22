@@ -167,7 +167,7 @@ async def handle(request: Request, path: str):
                 if not api.authorized(event):raise workspace.Unauthorized()
                 file_uid = None
             else:
-                allowed = uid == (await run_in_threadpool(device_auth.current,store))['owner']
+                allowed = uid in {d['uid'] for d in (await run_in_threadpool(device_auth.current,store))['devices']}
                 if not allowed:raise workspace.Forbidden()
                 file_uid = uid
             value = await run_in_threadpool(opaque_files.handle,store,file_uid,path.rsplit('/',1)[1],json.loads(body),collector=collector)
@@ -186,7 +186,7 @@ async def handle(request: Request, path: str):
                 if not api.authorized(event):raise workspace.Unauthorized()
             else:
                 # Only the pinned account may access opaque records.
-                allowed = uid == (await run_in_threadpool(device_auth.current,store))['owner']
+                allowed = uid in {d['uid'] for d in (await run_in_threadpool(device_auth.current,store))['devices']}
                 if not allowed:raise workspace.Forbidden()
             data = json.loads(body)
             operation = opaque.read if path.endswith('/read') else opaque.publish

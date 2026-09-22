@@ -9,7 +9,8 @@ from codex_workspace.crypto.workspace_crypto import Context, CryptoError, decode
 
 
 class DeviceControl:
-    def __init__(self,vault,trust,channel):
+    def __init__(self,vault,trust,channel,catalog=None):
+        self.catalog=catalog
         self.vault,self.trust,self.channel=vault,trust,channel
         trust.db.execute('''CREATE TABLE IF NOT EXISTS device_controls (
           record TEXT PRIMARY KEY, signer TEXT NOT NULL, digest TEXT NOT NULL, result TEXT NOT NULL, paired INTEGER NOT NULL DEFAULT 0)''')
@@ -36,14 +37,29 @@ class DeviceControl:
                                   Context(self.vault.workspace,scope,'control',record,1),envelope)
                 command=json.loads(raw)
                 now=int(time.time())
-                if (not isinstance(command,dict) or set(command)!={'action','issued_at','expires_at'}
-                        or command['action'] not in ('pair-device','list-devices')
+                if (not isinstance(command,dict) or set(command) not in ({'action','issued_at','expires_at'},{'action','issued_at','expires_at','args'})
+                        or command['action'] not in ('pair-device','list-devices','grants','member-policy','decide')
                         or type(command['issued_at']) is not int or type(command['expires_at']) is not int
                         or command['issued_at']>now+60 or command['expires_at']<=now
                         or not 0<command['expires_at']-command['issued_at']<=600):
                     raise CryptoError('Invalid device control intent')
-                if command['action']=='pair-device':
-                    result={'invitation':self.trust.invite(public_bytes(self.vault.authority))}
+                if command['action'] in ('grants','member-policy','decide'):
+                    if not self.catalog or not isinstance(command.get('args'),dict):raise CryptoError('Missing signed policy arguments')
+                    from codex_workspace.devices.sealed_access import LocalAccess
+                    policy=LocalAccess(self.vault,self.trust)
+                    if command['action']=='decide':policy.decision(device['id'],command['args'],self.catalog,envelope)
+                    else:policy.prepare(device['id'],command['action'],command['args'],self.catalog)
+                    result={'ok':True}
+                elif command['action']=='pair-device':
+                    args=command.get('args',{})
+                    if not isinstance(args,dict) or set(args) not in (set(),{'user_id'}):raise CryptoError('Invalid enrollment arguments')
+                    target=args.get('user_id')
+                    if target is not None:
+                        if not self.catalog:raise CryptoError('Local catalog unavailable')
+                        from codex_workspace.devices.sealed_access import LocalAccess
+                        state=LocalAccess(self.vault,self.trust).state(self.catalog)
+                        if type(target) is not int or target not in state['bindings'].values() or target==state['bindings']['owner']:raise CryptoError('Unknown local member')
+                    result={'invitation':self.trust.invite(public_bytes(self.vault.authority)),**({'member_uid':target} if target is not None else {})}
                 else:
                     result={'devices':[{'id':r['id'],'revoked':bool(r['revoked'])} for r in db.execute('SELECT id,revoked FROM devices')]}
                 db.execute('INSERT INTO device_controls(record,signer,digest,result) VALUES(?,?,?,?)',
@@ -69,6 +85,9 @@ class DeviceControl:
                     db.execute('INSERT INTO control_cursors VALUES(?,?) ON CONFLICT(device) DO UPDATE SET position=excluded.position',
                                (device['id'],entry['sequence']))
                     continue
+                if self.catalog:
+                    from codex_workspace.devices.sealed_access import LocalAccess
+                    LocalAccess(self.vault,self.trust).reconcile()
                 invitation=result.get('invitation')
                 if invitation:
                     self.channel.api.call('/v2/e2ee/pairing/register',{k:invitation[k] for k in ('workspace','id','expires')})
@@ -83,5 +102,11 @@ class DeviceControl:
             if not issuer or issuer['revoked'] or 'workspace' not in json.loads(issuer['scopes']):
                 db.execute('DELETE FROM pairings WHERE id=?',(invitation['id'],));continue
             if invitation['expires']<=int(time.time()):continue
-            if pairing.poll(invitation['id'],set(scopes)|{'workspace'}):
+            target=json.loads(row['result']).get('member_uid')
+            grants=set(scopes)|{'workspace'}
+            if target is not None:
+                from codex_workspace.domain import access
+                from codex_workspace.devices.sealed_access import LocalAccess
+                grants=set(access.permitted_threads(LocalAccess(self.vault,self.trust).state(self.catalog),target,'owner'))
+            if pairing.poll(invitation['id'],grants,member_uid=target):
                 db.execute('UPDATE device_controls SET paired=1 WHERE record=?',(row['record'],))
