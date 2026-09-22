@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Build and publish a private immutable VM release over SSH/SCP."""
 import argparse
+import base64
 import hashlib
 import io
 import json
@@ -23,7 +24,21 @@ def deployment():
         owner=state['settings']['owner'],project=state['project']))
 
 
-def publish(ssh_interface=None):
+def verify_pinned_host_key(path, host):
+    if path.is_symlink() or not path.is_file():raise RuntimeError('Pinned SSH host key is unavailable')
+    info=path.stat()
+    if info.st_uid!=os.getuid() or info.st_mode&0o022 or info.st_nlink!=1 or info.st_size>1024:
+        raise RuntimeError('Unsafe SSH host key file')
+    fields=path.read_text().split()
+    if len(fields)!=3 or fields[:2]!=[host,'ssh-ed25519']:
+        raise RuntimeError('Pinned SSH host identity differs from deployment target')
+    try:raw=base64.b64decode(fields[2],validate=True)
+    except ValueError:raise RuntimeError('Invalid pinned SSH host key') from None
+    if len(raw)!=51 or not raw.startswith(b'\x00\x00\x00\x0bssh-ed25519\x00\x00\x00\x20'):
+        raise RuntimeError('Invalid pinned SSH host key')
+
+
+def publish(ssh_interface=None, use_pinned_host_key=False):
     if ssh_interface is not None and not re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]{0,31}", ssh_interface):
         raise RuntimeError("Invalid SSH interface")
     d=deployment();s=d.state
@@ -60,14 +75,19 @@ def publish(ssh_interface=None):
     artifact=STATE/'vm-release.tar.gz'
     fd=os.open(artifact,os.O_CREAT|os.O_TRUNC|os.O_WRONLY,0o600)
     with os.fdopen(fd,'wb') as output:output.write(data)
-    # Trust the VM host key from authenticated Compute API boot output.
-    serial=subprocess.run(['yc','compute','instance','get-serial-port-output',s['vm_instance'],
-        '--folder-id',s['folder'],'--format','json'],capture_output=True,text=True,check=True)
-    try:contents=json.loads(serial.stdout)['contents']
-    except (ValueError,KeyError,TypeError):contents=serial.stdout
-    keys=re.findall(r'(ssh-ed25519 [A-Za-z0-9+/=]+)',contents)
-    if not keys:raise RuntimeError('No authenticated SSH host key')
-    known=STATE/'vm-known-hosts';known.write_text(s['vm_public_ip']+' '+keys[-1]+'\n')
+    known=STATE/'vm-known-hosts'
+    if use_pinned_host_key:
+        # Explicit reuse of an already authenticated exact-host pin. SSH still
+        # verifies the live key; no TOFU, key replacement or host-check bypass.
+        verify_pinned_host_key(known,s['vm_public_ip'])
+    else:
+        serial=subprocess.run(['yc','compute','instance','get-serial-port-output',s['vm_instance'],
+            '--folder-id',s['folder'],'--format','json'],capture_output=True,text=True,check=True,timeout=45)
+        try:contents=json.loads(serial.stdout)['contents']
+        except (ValueError,KeyError,TypeError):contents=serial.stdout
+        keys=re.findall(r'(ssh-ed25519 [A-Za-z0-9+/=]+)',contents)
+        if not keys:raise RuntimeError('No authenticated SSH host key')
+        known.write_text(s['vm_public_ip']+' '+keys[-1]+'\n')
     options=['-i',str(STATE/'web-vm-ed25519'),'-o','BatchMode=yes','-o','StrictHostKeyChecking=yes',
              '-o','UserKnownHostsFile='+str(known),'-o','ConnectTimeout=15']
     if ssh_interface:
@@ -121,10 +141,12 @@ def gateway(cutover=False):
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('action',choices=['publish','probe','cutover'])
     parser.add_argument('--ssh-interface',help='Bind SSH/SCP to an existing interface; does not modify routes')
+    parser.add_argument('--use-pinned-host-key',action='store_true',help='Use the existing exact-host SSH pin without querying Compute API')
     args=parser.parse_args()
     try:
-        if args.action=='publish':publish(args.ssh_interface)
+        if args.action=='publish':publish(args.ssh_interface,args.use_pinned_host_key)
         else:gateway(args.action=='cutover')
     except Exception as exc:
         print('VM release stopped:',str(exc) if isinstance(exc,RuntimeError) else type(exc).__name__)
+        raise SystemExit(1)
         raise SystemExit(1)
