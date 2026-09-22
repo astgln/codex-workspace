@@ -69,7 +69,11 @@ def main():
     restore.add_argument('--origin',required=True);restore.add_argument('--minimum-revision',type=int,required=True)
     args=parser.parse_args()
     try:
-        with exclusive(args.state):
+        lock=args.state/'e2ee-admin'
+        lock.mkdir(mode=0o700,exist_ok=True)
+        if lock.is_symlink() or lock.stat().st_mode&0o077 or lock.stat().st_uid!=os.getuid():
+            raise CryptoError('Unsafe local administration directory')
+        with exclusive(lock):
             path=args.state/'e2ee-keys.sqlite3'
             if args.command=='init':
                 scopes=scopes_from_catalog(args.catalog)
