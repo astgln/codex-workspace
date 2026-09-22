@@ -45,7 +45,8 @@ class PairingChannelTests(unittest.TestCase):
         self.assertEqual(first,pairing.handle(self.store,'read',read))
         bundle=json.loads(open_envelope(decode(invite['secret'],maximum=32),self.vault.authority.public_key(),
             Context(invite['workspace'],'devices','key-wrap',invite['id'],2),first['payload']['envelope']))
-        self.assertEqual([x['scope'] for x in bundle['keys']],['task'])
+        self.assertEqual([x['scope'] for x in bundle['keys'] if not x['scope'].startswith('device:')],['task'])
+        self.assertEqual(sum(x['scope'].startswith('device:') for x in bundle['keys']),1)
         self.assertNotIn(invite['secret'],json.dumps(self.sent))
         changed=dict(body,public_key=encode(public_bytes(ec.generate_private_key(ec.SECP256R1()))))
         with self.assertRaises(opaque.Conflict):pairing.handle(self.store,'offer',changed)

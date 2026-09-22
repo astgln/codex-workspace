@@ -20,7 +20,7 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 VERSION = 1
 MAX_PLAINTEXT = 6 * 1024 * 1024
-KINDS = frozenset(('request', 'response', 'history', 'catalog', 'attachment', 'push', 'key-wrap'))
+KINDS = frozenset(('request', 'response', 'history', 'catalog', 'attachment', 'push', 'key-wrap', 'control', 'control-result'))
 FIELDS = frozenset(('v', 'context', 'key_id', 'signer', 'salt', 'nonce', 'ciphertext', 'signature'))
 DOMAIN = b'codex-workspace/e2ee/v1'
 

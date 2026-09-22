@@ -1,7 +1,9 @@
+import {encryptedActive,encryptedUpload,encryptedDownload} from '../crypto/client';
 import { request } from './transport';
 import type { Attachment } from './types';
 async function sha256(bytes:Uint8Array){return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes as BufferSource))).map(b=>b.toString(16).padStart(2,'0')).join('');}
 export async function uploadFile(thread:string,file:File,onProgress:(percent:number)=>void,ensureActive:()=>void=()=>{}):Promise<Attachment>{
+  if(encryptedActive())return encryptedUpload(thread,file,ensureActive);
   if(!file.size||file.size>5*1024*1024)throw new Error('Размер файла должен быть от 1 байта до 5 МБ.');
   const bytes=new Uint8Array(await file.arrayBuffer());
   const digest=await sha256(bytes);
@@ -18,6 +20,7 @@ export async function uploadFile(thread:string,file:File,onProgress:(percent:num
   return request<Attachment>('/web/uploads/finish',{id:upload.id});
 }
 export async function downloadFile(file:Attachment){
+  if(encryptedActive()){saveDownload(file,await encryptedDownload(file));return;}
   const bytes=new Uint8Array(file.size);
   for(let offset=0,index=0;offset<bytes.length;index++){
     const part=await request<{data:string;chunk_size:number}>('/web/uploads/get',{id:file.id,index});
@@ -26,7 +29,10 @@ export async function downloadFile(file:Attachment){
     bytes.set(chunk,offset);offset+=chunk.length;
   }
   if(await sha256(bytes)!==file.sha256)throw new Error('Контрольная сумма файла не совпала.');
-  const url=URL.createObjectURL(new Blob([bytes],{type:'application/octet-stream'}));
+  saveDownload(file,bytes);
+}
+function saveDownload(file:Attachment,bytes:Uint8Array){
+  const url=URL.createObjectURL(new Blob([new Uint8Array(bytes).buffer],{type:'application/octet-stream'}));
   const anchor=document.createElement('a');anchor.href=url;anchor.download=file.name;anchor.click();
   setTimeout(()=>URL.revokeObjectURL(url),30000);
 }

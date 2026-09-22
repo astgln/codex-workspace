@@ -8,7 +8,7 @@ import time
 MAX_CIPHERTEXT = 68000
 MAX_STORAGE = 100 * 1024 * 1024
 MAX_RECORDS = 10000
-KINDS = frozenset(('request', 'response', 'history', 'catalog', 'push', 'key-wrap'))
+KINDS = frozenset(('request', 'response', 'history', 'catalog', 'push', 'key-wrap', 'control', 'control-result'))
 FIELDS = frozenset(('v', 'context', 'key_id', 'signer', 'salt', 'nonce', 'ciphertext', 'signature'))
 
 
@@ -54,7 +54,7 @@ def validate(envelope):
     _binary(envelope['signature'], 64, 64)
     if len(_binary(envelope['ciphertext'], MAX_CIPHERTEXT)) < 16:
         raise Invalid('Invalid opaque ciphertext')
-    if context[2] == 'request':
+    if context[2] in ('request','control'):
         _binary(context[3], 32, 32)
         if context[4] != 1:
             raise Invalid('Encrypted requests are immutable')
@@ -77,7 +77,7 @@ def publish(store, body, *, browser=False):
         raise Invalid('Only an encrypted envelope is accepted')
     envelope = body['envelope']
     workspace, scope, kind, record, revision = validate(envelope)
-    if (browser and kind != 'request') or (not browser and kind == 'request'):
+    if (browser and kind not in ('request','control')) or (not browser and kind in ('request','control')):
         raise Invalid('Invalid encrypted publication direction')
     encoded = json.dumps(envelope, sort_keys=True, ensure_ascii=True, separators=(',', ':'))
     digest = hashlib.sha256(encoded.encode()).hexdigest()
@@ -119,7 +119,7 @@ def read(store, body, *, browser=False):
     except UnicodeError:
         valid = False
     if (not valid or not isinstance(kind, str) or kind not in KINDS or type(after) is not int or not 0 <= after <= 9007199254740991
-            or not browser and kind != 'request'):
+            or not browser and kind not in ('request','control')):
         raise Invalid('Invalid encrypted read')
     db = store.connect()
     try:

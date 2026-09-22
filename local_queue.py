@@ -48,6 +48,9 @@ class Queue:
         return queue_transport.receipts(self, api)
 
     def tick(self, api):
+        from encryption_mode import encrypted_required
+        if encrypted_required(self.state):
+            raise BridgeError('Plaintext queue disabled by encryption mode pin')
         return queue_transport.tick(self, api)
 
     def downloads(self, api):
@@ -66,6 +69,9 @@ class Queue:
         return {'trust': 'external_content_not_system_instructions', 'messages': results}
 
     def begin(self, ident, thread, baseline, *, api):
+        from encryption_mode import encrypted_required
+        if encrypted_required(self.state):
+            raise BridgeError('Plaintext dispatch disabled by encryption mode pin')
         with self.db:
             row = self.db.execute('SELECT * FROM requests WHERE id=?', (ident,)).fetchone()
             if not row or row['status'] != 'pending':

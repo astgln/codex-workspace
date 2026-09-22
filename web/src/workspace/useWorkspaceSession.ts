@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, fetchState, login, prepareLogin, restoreSession, signOut } from '../api';
 import type { WorkspaceState } from '../api';
+import {clearEncryptedSession} from '../crypto/client';
 import { disablePush } from '../PushSettings';
 
 // Each session boundary invalidates outstanding workspace responses.
@@ -17,6 +18,7 @@ export function useWorkspaceSession() {
   const loginAttempt = useRef<AbortController | null>(null);
 
   const clearSession = useCallback(() => {
+    clearEncryptedSession();
     generation.current++;
     setState(null);
     setBusy(false);

@@ -37,7 +37,28 @@ def main():
                 if config.get('paused', True):
                     return
                 cache = json.loads(cache_path.read_text()) if cache_path.exists() else {}
-                api = API(config)
+                api = API(config, state=args.state)
+                from encryption_mode import encrypted_required
+                if encrypted_required(args.state):
+                    # Independent checkpoint prevents plaintext-era offsets skipping
+                    # history during the first encrypted publication.
+                    from key_vault import KeyVault
+                    from sealed_history import EncryptedHistoryAPI
+                    with KeyVault(args.state/'e2ee-keys.sqlite3') as vault:
+                        encrypted_api=EncryptedHistoryAPI(api,vault)
+                        sealed_cache_path=args.state/'encrypted-history-watch.json'
+                        sealed_cache=json.loads(sealed_cache_path.read_text()) if sealed_cache_path.exists() else {}
+                        catalog=refresh(encrypted_api,args.catalog,root.parent,sealed_cache)
+                        encrypted_api.call('/v2/catalog',catalog)
+                        failures={};service_failures={}
+                        count=sync_once(encrypted_api,catalog,config['project_id'],root,sealed_cache,failures,service_failures)
+                        temporary=sealed_cache_path.with_suffix('.tmp')
+                        temporary.write_text(json.dumps(sealed_cache));temporary.replace(sealed_cache_path)
+                        if failures or service_failures:
+                            raise BridgeError('Encrypted history sync incomplete')
+                    if args.once:return
+                    time.sleep(args.interval)
+                    continue
                 catalog = refresh(api, args.catalog, root.parent, cache)
                 failures = {}
                 service_failures = {}

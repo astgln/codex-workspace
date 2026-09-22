@@ -12,7 +12,7 @@ from starlette.concurrency import run_in_threadpool
 from cloud import login, workspace, domain
 from . import api
 from .store import Store
-from . import files, history, sessions, push, diagnostics
+from . import files, history, sessions, push, diagnostics, encryption_mode
 from .http_security import LoginBudget, secure_headers
 
 store = None
@@ -33,7 +33,13 @@ async def refresh_login_keys():
 
 async def deliver_push(stop):
     while not stop.is_set():
-        try:await run_in_threadpool(push.tick,store,os.environ['OWNER_USERNAME'])
+        try:
+            mode=encryption_mode.read(store)
+            if mode is None:
+                await run_in_threadpool(push.tick,store,os.environ['OWNER_USERNAME'])
+            else:
+                from . import encrypted_push
+                await run_in_threadpool(encrypted_push.tick,store,os.environ['OWNER_USERNAME'],mode)
         except Exception:pass  # Never log subscription endpoints or keys.
         try:await asyncio.wait_for(stop.wait(),10)
         except asyncio.TimeoutError:pass
@@ -92,10 +98,21 @@ async def handle(request: Request, path: str):
              'body':base64.b64encode(body).decode(), 'isBase64Encoded':True}
     cookie=None
     try:
+        mode=encryption_mode.read(store)
+    except (OSError,ValueError):
+        return Response('{"error":"encryption_mode_unavailable"}',status_code=503,media_type='application/json')
+    if mode is not None and not encryption_mode.permitted(path):
+        return Response('{"error":"encrypted_channel_required"}',status_code=409,media_type='application/json')
+    try:
         if path=='auth/session':
             if request.method!='GET':return Response(status_code=405)
             uid,csrf=sessions.verify(store,request.cookies.get(sessions.COOKIE))
-            view=await run_in_threadpool(store.mutate,lambda state:workspace.view(state,uid,os.environ['OWNER_USERNAME'],int(time.time())))
+            if mode is None:
+                view=await run_in_threadpool(store.mutate,lambda state:workspace.view(state,uid,os.environ['OWNER_USERNAME'],int(time.time())))
+            else:
+                owner=await run_in_threadpool(store.mutate,lambda state:workspace.is_owner(state,uid,os.environ['OWNER_USERNAME']))
+                view={'user':{'id':uid},'encryption':mode,
+                      'projects':[],'threads':[],'messages':[],'collector_seen':None,'catalog_updated':None}
             return Response(json.dumps({'csrf':csrf,'workspace':view}),media_type='application/json',headers={'Cache-Control':'no-store'})
         if path=='auth/logout':
             if request.method!='POST':return Response(status_code=405)
@@ -183,7 +200,7 @@ async def handle(request: Request, path: str):
             value=await run_in_threadpool(diagnostics.inspect,store,uid,os.environ['OWNER_USERNAME'])
             result=api.response(200,value)
         except workspace.Forbidden:result=api.response(403,{'error':'access_denied'})
-    elif path.startswith('web/push/'):
+    elif path.startswith(('web/push/','web/e2ee/push/')):
         try:
             if request.method!='POST':return Response(status_code=405)
             data=json.loads(body)

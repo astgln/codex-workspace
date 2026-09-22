@@ -1,0 +1,78 @@
+import {test,expect} from '@playwright/test';
+
+test('encrypted session restores catalog/history, sends only ciphertext and rejects downgrade',async({page})=>{
+ const transmitted:string[]=[];
+ let records:Record<string,unknown[]>={};
+ await page.route('https://workspace.test/**',async r=>{
+  const u=new URL(r.request().url());
+  if(u.pathname==='/auth/session')return r.fulfill({status:401,json:{}});
+  if(u.pathname.startsWith('/web/')){
+   transmitted.push(u.pathname+' '+(r.request().postData()||''));
+   const body=r.request().postDataJSON();
+   if(u.pathname==='/web/e2ee/read'){
+    const rows=records[body.scope+':'+body.kind]||[];
+    return r.fulfill({json:{records:rows,after:rows.length,more:false}});
+   }
+   if(u.pathname==='/web/e2ee/send')return r.fulfill({json:{sequence:1,duplicate:false}});
+   return r.fulfill({status:500,json:{}});
+  }
+  return r.fulfill({response:await r.fetch({url:'http://127.0.0.1:5173'+u.pathname+u.search})});
+ });
+ await page.goto('https://workspace.test/');
+ const fixture=await page.evaluate(async()=>{
+  // @ts-expect-error Vite module
+  const c=await import('/src/crypto/envelope.ts');
+  // @ts-expect-error Vite module
+  const v=await import('/src/crypto/vault.ts');
+  const workspace=c.encode(crypto.getRandomValues(new Uint8Array(32)));
+  const root=await crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign','verify']);
+  const authority=c.encode(new Uint8Array(await crypto.subtle.exportKey('spki',root.publicKey)));
+  const device=await v.getOrCreateDevice('10',workspace);
+  const keys=[];
+  for(const scope of ['workspace','task','device:'+device.deviceStamp]){
+   const raw=crypto.getRandomValues(new Uint8Array(32));keys.push({scope,epoch:1,key:c.encode(raw),id:await c.keyId(raw)});
+  }
+  await v.installBundle('10',{v:1,workspace,origin:location.origin,device:device.deviceStamp,authority,revision:1,keys},
+   {workspace,origin:location.origin,authority});
+  const records:Record<string,unknown[]>={};
+  const add=async(scope:string,kind:string,record:string,payload:unknown)=>{
+   const k=keys.find(k=>k.scope===scope)!;const list=records[scope+':'+kind]??=[];
+   list.push({sequence:list.length+1,envelope:await c.seal(c.decode(k.key,32),root,[workspace,scope,kind,record,1],new TextEncoder().encode(JSON.stringify(payload)))});
+  };
+  await add('workspace','catalog','index',{projects:['project'],threads:['task'],updated_at:1000});
+  await add('workspace','catalog','project:abc',{id:'project',title:'private project'});
+  await add('workspace','catalog','task:task',{id:'task',title:'private task',status:'idle',project_id:'project'});
+  await add('task','history','message',{id:'message',position:'001',role:'assistant',text:'private old answer',created:900});
+  await add('task','history','checkpoint',{synced_at:1000});
+  await add('task','response','request',{request:{thread:'task',text:'private old request',created:999,attachments:[]},result:{id:-1,status:'completed',events:[]}});
+  await add('task','push','preview',{thread:'task',title:'private notification',body:'private push text',created:Math.floor(Date.now()/1000)});
+  return {records,state:{user:{id:10},threads:[],messages:[],collector_seen:null,catalog_updated:null,encryption:{v:1,workspace}}};
+ });
+ records=fixture.records;
+ const result=await page.evaluate(async state=>{
+  // @ts-expect-error Vite module
+  const client=await import('/src/crypto/client.ts');
+  const loaded=await client.initializeEncryption(state);
+  const history=await client.encryptedHistory('task');
+  const message=await client.encryptedSend('task','private new request','test-request-id',[]);
+  return {title:loaded.projects[0].title,old:loaded.messages[0].text,history:history.messages[0].text,synced:history.synced_at,status:message.status};
+ },fixture.state);
+ expect(result).toEqual({title:'private project',old:'private old request',history:'private old answer',synced:1000,status:'queued'});
+ expect(transmitted.join('\n')).not.toContain('private');
+ const downgrade=await page.evaluate(async()=>{
+  // @ts-expect-error Vite module
+  const client=await import('/src/crypto/client.ts');
+  try{await client.initializeEncryption({user:{id:10},threads:[],messages:[]});return false;}catch{return true;}
+ });
+ expect(downgrade).toBe(true);
+ const preview=await page.evaluate(async envelope=>{
+  // @ts-expect-error Vite module
+  const p=await import('/src/crypto/push.ts');
+  const valid=await p.encryptedPush(envelope);
+  const changed=structuredClone(envelope);changed.context[1]='other-task';
+  const invalid=await p.encryptedPush(changed);return {valid,invalid};
+ },(fixture.records['task:push'][0] as {envelope:unknown}).envelope);
+ expect(preview.valid.title).toBe('private notification');
+ expect(preview.valid.body).toBe('private push text');
+ expect(preview.invalid.body).toBe('Новое зашифрованное сообщение');
+});

@@ -45,15 +45,31 @@ def serve(args, home, stop):
             if catalog.get('project_id') != config['project_id']:
                 raise BridgeError('Project mismatch')
             with exclusive(args.state):
-                queue=Queue(args.state)
+                from encryption_mode import encrypted_required
+                encrypted = encrypted_required(args.state)
+                vault = None
+                queue = None
                 try:
-                    api=API(config)
-                    queue.tick(api)
-                    result=dispatch_one(queue,home,args.codex,catalog,api=api,should_stop=stop.is_set)
-                    queue.tick(api)
-                    publish_health(api, result)
+                    api=API(config, state=args.state)
+                    if encrypted:
+                        from key_vault import KeyVault
+                        from sealed_runtime import SealedRuntime
+                        vault=KeyVault(args.state/'e2ee-keys.sqlite3')
+                        queue=SealedRuntime(args.state,vault,api,catalog)
+                        queue.tick()
+                        result=dispatch_one(queue,home,args.codex,catalog,api=queue.api,should_stop=stop.is_set)
+                        queue.tick()
+                    else:
+                        queue=Queue(args.state)
+                        queue.tick(api)
+                        result=dispatch_one(queue,home,args.codex,catalog,api=api,should_stop=stop.is_set)
+                        queue.tick(api)
+                        publish_health(api, result)
                 finally:
-                    queue.db.close()
+                    if queue is not None:
+                        if encrypted:queue.close()
+                        else:queue.db.close()
+                    if vault is not None:vault.db.close()
             status_path=args.state/'cli-worker-status.json'
             temporary=status_path.with_suffix('.tmp')
             temporary.write_text(json.dumps({'updated_at':int(time.time()),'pid':os.getpid(),**result}))

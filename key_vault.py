@@ -122,8 +122,14 @@ class KeyVault:
             raise
         return {'scope': scope, 'epoch': epoch, 'key': encode(raw), 'id': key_id(raw)}
 
+    def assert_ready(self):
+        table=self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='key_transition'").fetchone()
+        if table and self.db.execute('SELECT 1 FROM key_transition').fetchone():
+            raise CryptoError('Interrupted key transition requires local reconciliation')
+
     def active_key(self, scope: str):
         """Requests must use the current epoch, never a relay-selected old key."""
+        self.assert_ready()
         row = self.db.execute('SELECT * FROM scope_keys WHERE scope=? ORDER BY epoch DESC LIMIT 1', (scope,)).fetchone()
         if row is None:
             raise CryptoError('Scope is not configured locally')
@@ -145,6 +151,7 @@ class KeyVault:
 
     def bundle(self, device_public: bytes, scopes: set[str]) -> bytes:
         """Explicit local selection; never accept scope lists from a relay response."""
+        self.assert_ready()
         device = signer_id(public_key(encode(device_public)))
         if not isinstance(scopes, set) or any(not isinstance(s, str) for s in scopes):
             raise CryptoError('Explicit local scope selection is required')

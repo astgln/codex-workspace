@@ -11,7 +11,8 @@ MAX_RESPONSE_BYTES = 1024 * 1024
 
 
 class API:
-    def __init__(self, config):
+    def __init__(self, config, *, state=None):
+        self.state = STATE if state is None else Path(state)
         self.url = config['url']
         parsed = urllib.parse.urlparse(self.url)
         if (parsed.scheme != 'https' or not parsed.hostname or
@@ -27,6 +28,9 @@ class API:
         self.key = lines[0]
 
     def call(self, path, body):
+        from encryption_mode import encrypted_required
+        if encrypted_required(getattr(self,'state',STATE)) and not (isinstance(path,str) and path.startswith('/v2/e2ee/')):
+            raise BridgeError('Plaintext transport disabled by local encryption pin')
         if (not isinstance(path, str) or not path.startswith('/v2/')
                 or any(character in path for character in ('?', '#', '@', '\\'))
                 or any(ord(character) < 33 for character in path)):

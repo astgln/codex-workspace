@@ -1,3 +1,4 @@
+import {DeviceSettings} from './crypto/DeviceSettings';
 /* Workspace shell adapted from LuSeptem/codex-webui AppShell; MIT notice in licenses/. */
 import { useEffect, useState } from 'react';
 import {PairingScreen} from './crypto/PairingScreen';
@@ -31,7 +32,8 @@ export function App({initialPairingFragment=''}:{initialPairingFragment?:string}
  const history=useThreadHistory(selected,Boolean(state)&&section==='threads');
  const scroll=useConversationScroll(state&&section==='threads'?`${state.user.id}:${selected}`:'',Boolean(history.page),history.page?.before||null,before=>void history.refresh(before));
  if(!state)return <LoginPage checking={checking} ready={Boolean(config)} busy={busy} preparing={preparing} error={error} enter={enter} cancel={cancelLogin} prepare={prepare}/>;
- if(pairingFragment)return <PairingScreen key={String(state.user.id)} account={String(state.user.id)} fragment={pairingFragment} close={()=>setPairingFragment('')}/>;
+ if(pairingFragment)return <PairingScreen key={String(state.user.id)} account={String(state.user.id)} fragment={pairingFragment} close={()=>{setPairingFragment('');void refresh();}}/>;
+ if(state.encryption_locked)return <main className="login-page"><section className="login-card"><h1>Нужен ключ устройства</h1><p>Откройте ссылку привязки с доверенного устройства или восстановите доступ с локального обработчика. Вход через Telegram не расшифровывает переписку.</p><button className="quiet" onClick={logout}>Выйти</button></section></main>;
  const online=state.collector_seen!==null&&Date.now()/1000-state.collector_seen<600;
  return <div className="workspace flex w-screen overflow-hidden bg-background text-foreground">
   {sidebar&&<button className="sidebar-shade" aria-label="Закрыть меню" onClick={()=>setSidebar(false)}/>}
@@ -40,6 +42,7 @@ export function App({initialPairingFragment=''}:{initialPairingFragment?:string}
    <div id="sidebar-project-tasks" className="sidebar-project-tasks" hidden={!projectExpanded}><input className="thread-search" placeholder="Найти тред…" aria-label="Найти тред" value={search} onChange={e=>setSearch(e.target.value)}/>
    <nav className="thread-list">{projectThreads.filter(t=>t.title.toLowerCase().includes(search.toLowerCase())).map(t=><button key={t.id} className={'thread-row '+(selected===t.id&&section==='threads'?'selected':'')} onClick={()=>choose(t.id)}><MessageSquare size={15}/><span>{t.title}</span>{t.status==='active'&&<span className="activity-dot" title="Активная задача"/>}</button>)}{projectThreads.length===0&&<p className="small muted empty-threads">Список тредов появится после синхронизации с Codex.</p>}</nav></div>
    {<div className="weekly-quota small" aria-label="Недельная квота Codex">{state.weekly_quota?<><strong>Неделя: {Date.now()/1000>=state.weekly_quota.resets_at?'ожидаем обновления':`${Math.round(100-state.weekly_quota.used_percent)}% осталось`}</strong><progress max={100} value={Math.max(0,100-state.weekly_quota.used_percent)} aria-label="Остаток недельной квоты"/><span className="muted">Сброс: {new Date(state.weekly_quota.resets_at*1000).toLocaleString('ru-RU')}</span><span className="muted">Данные на {new Date(state.weekly_quota.observed_at*1000).toLocaleString('ru-RU')}</span></>:<span className="muted">Недельная квота пока неизвестна</span>}</div>}
+   {state.encryption&&<DeviceSettings/>}
    <PushSettings/>
    <Diagnostics/>
    <div className="sidebar-bottom"><span className="small muted">Личное пространство</span><button className="icon-button" onClick={()=>setDark(!dark)} aria-label={dark?'Светлая тема':'Тёмная тема'}>{dark?<Sun size={17}/>:<Moon size={17}/>}</button><button className="icon-button" onClick={logout} disabled={busy} aria-label="Выйти"><LogOut size={17}/></button></div>

@@ -1,10 +1,10 @@
 /** Trusted-endpoint crypto. This module must never be included in relay handlers. */
 export const MAX_PLAINTEXT = 6 * 1024 * 1024;
-export type Kind = 'request' | 'response' | 'history' | 'catalog' | 'attachment' | 'push' | 'key-wrap';
+export type Kind = 'request' | 'response' | 'history' | 'catalog' | 'attachment' | 'push' | 'key-wrap' | 'control' | 'control-result';
 export type Context = [workspace: string, scope: string, kind: Kind, record: string, revision: number];
 export type Envelope = {v: 1; context: Context; key_id: string; signer: string;
   salt: string; nonce: string; ciphertext: string; signature: string};
-const kinds = new Set(['request', 'response', 'history', 'catalog', 'attachment', 'push', 'key-wrap']);
+const kinds = new Set(['request', 'response', 'history', 'catalog', 'attachment', 'push', 'key-wrap', 'control', 'control-result']);
 const fields = ['v', 'context', 'key_id', 'signer', 'salt', 'nonce', 'ciphertext', 'signature'].sort();
 const utf8 = new TextEncoder();
 const domain = utf8.encode('codex-workspace/e2ee/v1');
