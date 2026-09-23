@@ -61,7 +61,14 @@ class DeviceControl:
             cursor=db.execute('SELECT position FROM control_cursors WHERE device=?',(device['id'],)).fetchone()
             scope=delivery_scope(device['public_key'])
             for entry in self.channel.requests(scope,cursor[0] if cursor else 0,kind='control')['records']:
-                result=self.consume(device,entry)
+                try:
+                    result=self.consume(device,entry)
+                except CryptoError:
+                    # Invalid/expired signed controls cannot block later requests.
+                    # No grant or invitation is issued for a rejected envelope.
+                    db.execute('INSERT INTO control_cursors VALUES(?,?) ON CONFLICT(device) DO UPDATE SET position=excluded.position',
+                               (device['id'],entry['sequence']))
+                    continue
                 invitation=result.get('invitation')
                 if invitation:
                     self.channel.api.call('/v2/e2ee/pairing/register',{k:invitation[k] for k in ('workspace','id','expires')})

@@ -49,3 +49,17 @@ class DeviceControlTests(unittest.TestCase):
         self.vault.scope_key('task')
         DeviceKeys(self.vault,self.trust,self.channel).configure(self.ident,{'task'})
         with self.assertRaises(CryptoError):self.control.consume(self.row,self.entry())
+
+    def test_expired_control_does_not_block_fresh_invitation(self):
+        from unittest.mock import patch
+        entries=[dict(self.entry(expired=True),sequence=1),dict(self.entry(),sequence=2)]
+        original=self.channel.api.call
+        def relay(route,body):
+            if route=='/v2/e2ee/pairing/register':return {'ok':True}
+            if route=='/v2/e2ee/pairing/read':return {'payload':None}
+            return original(route,body)
+        with patch.object(self.channel,'requests',return_value={'records':entries}),patch.object(self.channel.api,'call',side_effect=relay):
+            self.control.tick({'workspace'})
+        self.assertEqual(self.trust.db.execute('SELECT position FROM control_cursors').fetchone()[0],2)
+        self.assertEqual(self.trust.db.execute('SELECT count(*) FROM device_controls').fetchone()[0],1)
+        self.assertEqual(self.trust.db.execute('SELECT count(*) FROM pairings').fetchone()[0],1)
