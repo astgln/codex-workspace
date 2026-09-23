@@ -22,8 +22,8 @@ class Relay:
 
     def call(self, route, body):
         self.calls.append((route, json.loads(json.dumps(body))))
-        if route == '/v2/e2ee/publish':
-            response = opaque.publish(self.store, body)
+        if route in ('/v2/e2ee/publish','/v2/e2ee/publish-batch'):
+            response = opaque.publish_batch(self.store,body) if route.endswith('publish-batch') else opaque.publish(self.store, body)
             if self.lose_response:
                 self.lose_response = False
                 raise OSError('Simulated lost acknowledgement')

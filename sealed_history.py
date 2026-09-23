@@ -35,12 +35,13 @@ class EncryptedHistoryAPI:
         if path=='/v2/history/publish':
             scope=body['thread']
             self.vault.active_key(scope)
-            for message in body['messages']:
-                ident=hashlib.sha256(message['id'].encode()).hexdigest()
-                self.channel.snapshot(scope,'history',ident,message)
-                if message.get('role')=='assistant' and message.get('phase')=='final_answer' and message.get('turn_id'):
-                    from sealed_push import publish
-                    publish(self.channel,scope,'answer:'+message['turn_id'],self.titles.get(scope,'Codex Workspace'),message['text'],message['created'])
+            with self.channel.batch():
+                for message in body['messages']:
+                    ident=hashlib.sha256(message['id'].encode()).hexdigest()
+                    self.channel.snapshot(scope,'history',ident,message)
+                    if message.get('role')=='assistant' and message.get('phase')=='final_answer' and message.get('turn_id'):
+                        from sealed_push import publish
+                        publish(self.channel,scope,'answer:'+message['turn_id'],self.titles.get(scope,'Codex Workspace'),message['text'],message['created'])
             if body.get('finish'):
                 self.channel.snapshot(scope,'history','checkpoint',
                     {**{k:v for k,v in body.items() if k!='messages'},'synced_at':int(time.time())})

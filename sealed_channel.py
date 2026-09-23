@@ -1,6 +1,7 @@
 """Opt-in endpoint transport over the opaque relay; no plaintext fallback."""
 import hashlib
 import json
+from contextlib import contextmanager
 
 from workspace_crypto import Context, CryptoError, decode, seal
 
@@ -10,6 +11,7 @@ class SealedChannel:
         if api.url != vault.origin:
             raise CryptoError('Encrypted endpoint does not match the pinned origin')
         self.api, self.vault = api, vault
+        self.buffer = None
         vault.db.execute('''CREATE TABLE IF NOT EXISTS encrypted_outbox (
           scope TEXT NOT NULL, kind TEXT NOT NULL, record TEXT NOT NULL, revision INTEGER NOT NULL,
           digest TEXT NOT NULL, envelope TEXT NOT NULL, PRIMARY KEY(scope,kind,record,revision))''')
@@ -53,6 +55,9 @@ class SealedChannel:
             db.execute('ROLLBACK')
             raise
         # Retrying an uncertain network result uses these exact persisted bytes.
+        if self.buffer is not None:
+            self.buffer.append(envelope)
+            return {}
         reply=self.api.call('/v2/e2ee/publish', {'envelope': envelope})
         if isinstance(reply,dict) and type(reply.get('sequence')) is int and reply['sequence']>0 and type(reply.get('duplicate')) is bool:
             # Keep the newest ciphertext for uncertain retries, but not every
@@ -75,6 +80,31 @@ class SealedChannel:
         except BaseException:
             db.execute('ROLLBACK');raise
         return self.publish(scope,kind,record,revision,payload)
+
+    @contextmanager
+    def batch(self):
+        if self.buffer is not None:raise CryptoError('Nested encrypted batch')
+        self.buffer=[]
+        try:
+            yield
+            pending=self.buffer
+            while pending:
+                group=[]
+                while pending and len(group)<50:
+                    candidate=group+[pending[0]]
+                    if len(json.dumps({'envelopes':candidate}).encode())>95000:
+                        if not group:raise CryptoError('Encrypted batch record too large')
+                        break
+                    group.append(pending.pop(0))
+                reply=self.api.call('/v2/e2ee/publish-batch',{'envelopes':group})
+                results=reply.get('results') if isinstance(reply,dict) else None
+                if not isinstance(results,list) or len(results)!=len(group):raise CryptoError('Invalid encrypted batch receipt')
+                for envelope,result in zip(group,results):
+                    if not isinstance(result,dict) or type(result.get('sequence')) is not int or result['sequence']<=0 or type(result.get('duplicate')) is not bool:
+                        raise CryptoError('Invalid encrypted batch receipt')
+                    _,scope,kind,record,revision=envelope['context']
+                    self.vault.db.execute('DELETE FROM encrypted_outbox WHERE scope=? AND kind=? AND record=? AND revision<?',(scope,kind,record,revision))
+        finally:self.buffer=None
 
     def requests(self, scope: str, after: int, *, kind='request'):
         if kind not in ('request','control'):raise CryptoError('Invalid intake kind')

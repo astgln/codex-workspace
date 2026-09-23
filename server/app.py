@@ -174,7 +174,7 @@ async def handle(request: Request, path: str):
         except opaque.Conflict:result=api.response(409,{'error':'encrypted_file_conflict'})
         except (ValueError,TypeError,RecursionError):result=api.response(400,{'error':'invalid_encrypted_file'})
         except Exception:result=api.response(503,{'error':'temporarily_unavailable'})
-    elif path in ('web/e2ee/send', 'web/e2ee/read', 'v2/e2ee/publish', 'v2/e2ee/read'):
+    elif path in ('web/e2ee/send', 'web/e2ee/read', 'v2/e2ee/publish', 'v2/e2ee/publish-batch', 'v2/e2ee/read'):
         from . import opaque
         try:
             if request.method != 'POST':return Response(status_code=405)
@@ -187,7 +187,10 @@ async def handle(request: Request, path: str):
                 if not allowed:raise workspace.Forbidden()
             data = json.loads(body)
             operation = opaque.read if path.endswith('/read') else opaque.publish
-            value = await run_in_threadpool(operation, store, data, browser=not collector)
+            if path=='v2/e2ee/publish-batch':
+                value=await run_in_threadpool(opaque.publish_batch,store,data)
+            else:
+                value = await run_in_threadpool(operation, store, data, browser=not collector)
             result = api.response(200,value)
         except workspace.Unauthorized:result=api.response(401,{'error':'login_required'})
         except workspace.Forbidden:result=api.response(403,{'error':'access_denied'})

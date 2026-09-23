@@ -139,3 +139,13 @@ def read(store, body, *, browser=False):
         return {'records': entries, 'after': cursor, 'more': len(rows) > len(entries)}
     finally:
         db.close()
+
+
+def publish_batch(store,body):
+    if not isinstance(body,dict) or set(body)!={'envelopes'} or not isinstance(body['envelopes'],list) or not 1<=len(body['envelopes'])<=50:
+        raise Invalid('Invalid encrypted batch')
+    for envelope in body['envelopes']:
+        if validate(envelope)[2] in ('request','control'):raise Invalid('Invalid publication direction')
+    # Each immutable record is independently durable. A partial network failure
+    # retries the same ciphertext; existing records return duplicate receipts.
+    return {'results':[publish(store,{'envelope':e}) for e in body['envelopes']]}
