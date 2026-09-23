@@ -123,7 +123,9 @@ def read(store, body, *, browser=False):
         raise Invalid('Invalid encrypted read')
     db = store.connect()
     try:
-        db.execute('BEGIN')
+        # Initialization may write; acquire the writer reservation before reads
+        # to avoid SQLITE_BUSY on deferred read-to-write upgrades.
+        db.execute('BEGIN IMMEDIATE')
         _initialize(db)
         rows = db.execute('''SELECT sequence,envelope FROM opaque_records WHERE workspace=? AND scope=? AND kind=?
                             AND sequence>? ORDER BY sequence LIMIT 51''', (workspace, scope, kind, after)).fetchall()

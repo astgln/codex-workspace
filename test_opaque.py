@@ -89,3 +89,13 @@ class OpaqueRelayTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+    def test_parallel_polling_and_history_publication(self):
+        from concurrent.futures import ThreadPoolExecutor
+        envelopes=[self.envelope(record='parallel:'+str(i)) for i in range(40)]
+        def work(i):
+            opaque.publish(self.store,{'envelope':envelopes[i]})
+            return self.read()
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            for result in pool.map(work,range(40)):self.assertIsInstance(result['records'],list)
+        self.assertEqual(len(self.read()['records']),40)
