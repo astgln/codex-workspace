@@ -20,6 +20,18 @@ class SealedRuntime:
         self.db.execute('CREATE TABLE IF NOT EXISTS encrypted_cursors (scope TEXT PRIMARY KEY, position INTEGER NOT NULL)')
         self.db.commit()
 
+    def health(self,result):
+        import time
+        from worker_health import summary
+        try:
+            rows=self.db.execute("SELECT status,count(*) FROM requests WHERE json_type(payload,'$.encrypted_envelope')='object' GROUP BY status").fetchall()
+            counts=dict(rows)
+            self.channel.snapshot('workspace','catalog','worker',{
+                'worker':{**summary(result),'observed_at':int(time.time())},
+                'queue':{'queued':counts.get('pending',0)+counts.get('awaiting_approval',0)},
+                'completed':counts.get('complete',0)})
+        except (BridgeError,OSError,ValueError,KeyError):pass
+
     def close(self):
         self.sealed.__exit__(None, None, None)
 

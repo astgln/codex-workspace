@@ -59,6 +59,7 @@ def serve(args, home, stop):
                         queue.tick()
                         result=dispatch_one(queue,home,args.codex,catalog,api=queue.api,should_stop=stop.is_set)
                         queue.tick()
+                        queue.health(result)
                     else:
                         queue=Queue(args.state)
                         queue.tick(api)

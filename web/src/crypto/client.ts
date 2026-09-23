@@ -171,3 +171,12 @@ export async function createDeviceInvitation(){
  }
  throw new Error('Локальный обработчик не подтвердил приглашение.');
 }
+
+export async function encryptedDiagnostics(){
+ const s=current();s.device.bundle=await refreshDeviceKeys(s.device);check(s);
+ const records=await readVerifiedRecords(s.device,'workspace','catalog');check(s);
+ const status=records.get('worker')?.value as {worker:{status:string;observed_at:number;waiting:Record<string,number>;unresolved:number};queue:Record<string,number>;completed:number}|undefined;
+ const seen=status?.worker?.observed_at??null;
+ return {collector_seen:seen,collector_recent:seen!==null&&Date.now()/1000-seen<600,
+  history_synced:null,worker:status?.worker,queue:status?.queue??{queued:0},completed:status?.completed??0,notifications:null};
+}
