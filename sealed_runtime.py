@@ -28,7 +28,7 @@ class SealedRuntime:
             counts=dict(rows)
             self.channel.snapshot('workspace','catalog','worker',{
                 'worker':{**summary(result),'observed_at':int(time.time())},
-                'queue':{'queued':counts.get('pending',0)+counts.get('awaiting_approval',0)},
+                'queue':{'queued':counts.get('pending',0)},
                 'completed':counts.get('complete',0)})
         except (BridgeError,OSError,ValueError,KeyError):pass
 
