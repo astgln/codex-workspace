@@ -3,6 +3,8 @@ import {test,expect} from '@playwright/test';
 test('encrypted session restores catalog/history, sends only ciphertext and rejects downgrade',async({page})=>{
  const transmitted:string[]=[];
  let records:Record<string,unknown[]>={};
+ const controls:unknown[]=[];
+ let rejectControl=true;
  await page.route('https://workspace.test/**',async r=>{
   const u=new URL(r.request().url());
   if(u.pathname==='/auth/session')return r.fulfill({status:401,json:{}});
@@ -12,6 +14,10 @@ test('encrypted session restores catalog/history, sends only ciphertext and reje
    if(u.pathname==='/web/e2ee/read'){
     const rows=records[body.scope+':'+body.kind]||[];
     return r.fulfill({json:{records:rows,after:rows.length,more:false}});
+   }
+   if(u.pathname==='/web/e2ee/send'&&body.envelope.context[2]==='control'){
+    controls.push(body.envelope);
+    if(rejectControl)return r.fulfill({status:503,json:{}});
    }
    if(u.pathname==='/web/e2ee/send')return r.fulfill({json:{sequence:1,duplicate:false}});
    return r.fulfill({status:500,json:{}});
@@ -46,6 +52,11 @@ test('encrypted session restores catalog/history, sends only ciphertext and reje
   await add('task','history','checkpoint',{synced_at:1000});
   await add('task','response','request',{request:{thread:'task',text:'private old request',created:999,attachments:[]},result:{id:-1,status:'completed',events:[]}});
   await add('task','push','preview',{thread:'task',title:'private notification',body:'private push text',created:Math.floor(Date.now()/1000)});
+  (window as any).invitationReply=async(record:string)=>{
+   const scope='device:'+device.deviceStamp;
+   await add(scope,'control-result',record,{invitation:{workspace,authority,expires:Math.floor(Date.now()/1000)+600,secret:'fixture-only'}});
+   return {scope,rows:records[scope+':control-result']};
+  };
   return {records,state:{user:{id:10},threads:[],messages:[],collector_seen:null,catalog_updated:null,encryption:{v:1,workspace}}};
  });
  records=fixture.records;
@@ -59,6 +70,26 @@ test('encrypted session restores catalog/history, sends only ciphertext and reje
  },fixture.state);
  expect(result).toEqual({title:'private project',old:'private old request',history:'private old answer',synced:1000,status:'queued'});
  expect(transmitted.join('\n')).not.toContain('private');
+ // A lost response must retry the exact encrypted invitation, not create another one.
+ for(let attempt=0;attempt<2;attempt++){
+  expect(await page.evaluate(async()=>{
+   // @ts-expect-error Vite module
+   const client=await import('/src/crypto/client.ts');
+   try{await client.createDeviceInvitation();return false;}catch{return true;}
+  })).toBe(true);
+ }
+ expect(controls).toHaveLength(2);expect(controls[1]).toEqual(controls[0]);
+ const control=controls[0] as {context:string[]};
+ const reply=await page.evaluate(record=>(window as any).invitationReply(record),control.context[3]);
+ records[reply.scope+':control-result']=reply.rows;rejectControl=false;
+ const invitation=await page.evaluate(async()=>{
+  // @ts-expect-error Vite module
+  const client=await import('/src/crypto/client.ts');
+  return client.createDeviceInvitation();
+ });
+ expect(invitation.link).toContain('/#pair=');
+ expect(controls[2]).toEqual(controls[0]);
+ expect(transmitted.join('\n')).not.toContain('fixture-only');
  const downgrade=await page.evaluate(async()=>{
   // @ts-expect-error Vite module
   const client=await import('/src/crypto/client.ts');

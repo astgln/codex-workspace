@@ -1,3 +1,4 @@
+import {waitForControlResult} from './control';
 /** Encrypted application session. No plaintext transport fallback after a mode pin. */
 import type {WorkspaceState,HistoryPage,Message} from '../api/types';
 import {request,requireEncryptedTransport} from '../api/transport';
@@ -151,25 +152,24 @@ async function assembleResponse(value:unknown,records:Map<string,{revision:numbe
  return decodeObject(bytes);
 }
 
-export async function createDeviceInvitation(){
+export async function createDeviceInvitation(onProgress?:(seconds:number)=>void){
  const s=current(),scope='device:'+s.device.deviceStamp;
  const key=s.device.bundle!.keys.filter(k=>k.scope===scope).sort((a,b)=>b.epoch-a.epoch)[0];
  if(!key)throw new Error('Нет ключа управления устройством.');
- const record=encode(crypto.getRandomValues(new Uint8Array(32))),now=Math.floor(Date.now()/1000);
- const envelope=await seal(decode(key.key,32,32),s.device.signing,[s.workspace,scope,'control',record,1],
-  new TextEncoder().encode(JSON.stringify({action:'pair-device',issued_at:now,expires_at:now+600})));
- check(s);await request('/web/e2ee/send',{envelope});check(s);
- for(let attempt=0;attempt<60;attempt++){
-  const replies=await readVerifiedRecords(s.device,scope,'control-result');check(s);
-  const reply=replies.get(record)?.value as {invitation?:{workspace:string;authority:string;expires:number}}|undefined;
-  if(reply?.invitation){
-   const invitation=reply.invitation;
-   if(invitation.workspace!==s.workspace||invitation.authority!==s.device.bundle!.authority||invitation.expires<=Date.now()/1000)throw new Error('Приглашение не соответствует этому пространству.');
-   return {link:location.origin+'/#pair='+encode(new TextEncoder().encode(JSON.stringify(invitation))),expires:invitation.expires};
-  }
-  await new Promise(resolve=>setTimeout(resolve,2000));check(s);
+ const storageId=JSON.stringify(['pair-device',s.account,s.workspace,s.device.deviceStamp]);
+ let entry=await stored<{envelope:Awaited<ReturnType<typeof seal>>;expires:number}>('outbox',storageId);check(s);
+ const now=Math.floor(Date.now()/1000);
+ if(!entry||entry.expires<=now){
+  const record=encode(crypto.getRandomValues(new Uint8Array(32)));
+  entry={expires:now+600,envelope:await seal(decode(key.key,32,32),s.device.signing,[s.workspace,scope,'control',record,1],
+   new TextEncoder().encode(JSON.stringify({action:'pair-device',issued_at:now,expires_at:now+600})))};
+  check(s);await stored('outbox',storageId,entry);check(s);
  }
- throw new Error('Локальный обработчик не подтвердил приглашение.');
+ const reply=await waitForControlResult(s.device,entry.envelope,()=>check(s),onProgress);
+ const invitation=reply.invitation as {workspace:string;authority:string;expires:number}|undefined;
+ if(!invitation||invitation.workspace!==s.workspace||invitation.authority!==s.device.bundle!.authority||invitation.expires<=Date.now()/1000)throw new Error('Приглашение истекло. Создайте новую ссылку.');
+ await stored('outbox',storageId,{...entry,expires:0});check(s);
+ return {link:location.origin+'/#pair='+encode(new TextEncoder().encode(JSON.stringify(invitation))),expires:invitation.expires};
 }
 
 export async function encryptedDiagnostics(){
