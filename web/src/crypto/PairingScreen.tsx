@@ -1,6 +1,6 @@
 import {useEffect, useRef, useState} from 'react';
 import {createPairingOffer, openPairingGrant, parsePairingFragment} from './pairing';
-import {getOrCreateDevice, installBundle} from './vault';
+import {getOrCreateDevice, installBundle, loadDevice} from './vault';
 import {request} from '../api/transport';
 import type {Envelope} from './envelope';
 
@@ -20,6 +20,8 @@ export function PairingScreen({account, fragment, close}: {account:string; fragm
   const connect = async()=>{
     const run = ++active.current;
     setStatus('waiting');
+    // Best effort: denial must not prevent enrollment or claim persistence.
+    void navigator.storage?.persist?.().catch(()=>false);
     try {
       const invitation = await parsePairingFragment(fragment);
       const device = await getOrCreateDevice(account, invitation.workspace);
@@ -37,6 +39,8 @@ export function PairingScreen({account, fragment, close}: {account:string; fragm
           const bundle = await openPairingGrant(invitation, reply.payload.envelope, device.signing.publicKey, location.origin);
           if (active.current !== run) return;
           await installBundle(account,bundle,{workspace:invitation.workspace,origin:location.origin,authority:invitation.authority});
+          const saved=await loadDevice(account,invitation.workspace);
+          if(!saved?.bundle||saved.deviceStamp!==device.deviceStamp||JSON.stringify(saved.bundle)!==JSON.stringify(bundle))throw new Error('Key storage verification failed');
           if (active.current === run) {pending.current=null;setStatus('done');}
           return;
         }
@@ -54,6 +58,6 @@ export function PairingScreen({account, fragment, close}: {account:string; fragm
     <p role="status" className="small muted">{status==='waiting'?'Ожидаем подтверждение локального обработчика…':status==='done'?'Ключи проверены и сохранены на этом устройстве.':status==='error'?'Не удалось завершить привязку. Проверьте связь и срок приглашения.':''}</p>
     {status!=='done'&&<button className="primary login-button" disabled={status==='waiting'} onClick={()=>void connect()}>{status==='error'?'Повторить':'Привязать'}</button>}
     <button className="quiet" onClick={()=>{active.current++;pending.current=null;close();}}>{status==='done'?'Закрыть':'Отмена'}</button>
-    <p className="small muted">Привязка сохраняет ключи. Шифрование обычной переписки пока не включено.</p>
+    <p className="small muted">Ключи сохраняются в этом приложении или браузере. Для Safari и PWA нужна отдельная привязка.</p>
   </section></main>;
 }

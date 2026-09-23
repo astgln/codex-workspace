@@ -1,3 +1,4 @@
+import {LockedDevice} from './crypto/LockedDevice';
 import {DeviceSettings} from './crypto/DeviceSettings';
 /* Workspace shell adapted from LuSeptem/codex-webui AppShell; MIT notice in licenses/. */
 import { useEffect, useState } from 'react';
@@ -33,7 +34,7 @@ export function App({initialPairingFragment=''}:{initialPairingFragment?:string}
  const scroll=useConversationScroll(state&&section==='threads'?`${state.user.id}:${selected}`:'',Boolean(history.page),history.page?.before||null,before=>void history.refresh(before));
  if(!state)return <LoginPage checking={checking} ready={Boolean(config)} busy={busy} preparing={preparing} error={error} enter={enter} cancel={cancelLogin} prepare={prepare}/>;
  if(pairingFragment)return <PairingScreen key={String(state.user.id)} account={String(state.user.id)} fragment={pairingFragment} close={()=>{setPairingFragment('');void refresh();}}/>;
- if(state.encryption_locked)return <main className="login-page"><section className="login-card"><h1>Нужен ключ устройства</h1><p>Откройте ссылку привязки с доверенного устройства или восстановите доступ с локального обработчика. Вход через Telegram не расшифровывает переписку.</p><button className="quiet" onClick={logout}>Выйти</button></section></main>;
+ if(state.encryption_locked)return <LockedDevice workspace={state.encryption!.workspace} pair={setPairingFragment} logout={logout}/>;
  const online=state.collector_seen!==null&&Date.now()/1000-state.collector_seen<600;
  return <div className="workspace flex w-screen overflow-hidden bg-background text-foreground">
   {sidebar&&<button className="sidebar-shade" aria-label="Закрыть меню" onClick={()=>setSidebar(false)}/>}
