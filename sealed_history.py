@@ -47,5 +47,15 @@ class EncryptedHistoryAPI:
                     {**{k:v for k,v in body.items() if k!='messages'},'synced_at':int(time.time())})
             return {'ok':True}
         if path=='/v2/usage':
+            from cloud.quota import valid
+            if not valid(body):raise BridgeError('Invalid quota metadata')
+            db=self.vault.db
+            db.execute('CREATE TABLE IF NOT EXISTS encrypted_quota (id INTEGER PRIMARY KEY CHECK(id=1), observed INTEGER, payload TEXT)')
+            import json
+            row=db.execute('SELECT observed,payload FROM encrypted_quota WHERE id=1').fetchone()
+            if row and row['observed']>body['observed_at']:
+                body=json.loads(row['payload'])
+            else:
+                db.execute('INSERT OR REPLACE INTO encrypted_quota VALUES(1,?,?)',(body['observed_at'],json.dumps(body)))
             return self.channel.snapshot('workspace','catalog','quota',body)
         raise BridgeError('Plaintext history API disabled in encrypted mode')

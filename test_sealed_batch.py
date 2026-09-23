@@ -24,3 +24,14 @@ class BatchTests(unittest.TestCase):
                 self.assertLess(len(relay.calls),5)
                 db=store.connect()
                 self.assertEqual(db.execute('SELECT count(*) FROM opaque_records').fetchone()[0],60);db.close()
+
+    def test_older_journal_cannot_replace_newer_quota(self):
+        from sealed_history import EncryptedHistoryAPI
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);store=Store(root/'server')
+            with KeyVault.create(root/'keys',Relay.url) as vault:
+                relay=Relay(store);api=EncryptedHistoryAPI(relay,vault)
+                fresh={'used_percent':25,'resets_at':5000,'observed_at':2000}
+                api.call('/v2/usage',fresh)
+                api.call('/v2/usage',dict(fresh,used_percent=10,observed_at=1000))
+                self.assertEqual(relay.calls[0][1]['envelope'],relay.calls[1][1]['envelope'])

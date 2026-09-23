@@ -61,9 +61,7 @@ def sync_once(api, catalog, project, root, cache, failures=None, service_failure
             count += sync_thread(api, ident, root, cache, pending)
         except RECOVERABLE:
             failures[ident] = 'history_unavailable'
-    # Quota failure does not roll back uploaded history or force a journal replay.
-    for thread in threads:
-        ident = thread['id']
+        # Publish each observed quota without waiting for later task histories.
         checkpoint = cache.get(ident, {})
         quota = checkpoint.get('pending_quota')
         if quota:
