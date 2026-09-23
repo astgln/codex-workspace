@@ -76,11 +76,15 @@ export async function encryptedState():Promise<ModeState>{
  for(const thread of threads){
   const responses=await readVerifiedRecords(s.device,thread.id,'response');check(s);
   for(const [record,entry] of responses){
-   if(record.startsWith('part:'))continue;
+   if(record.startsWith('part:')||record.startsWith('dispatch:'))continue;
    const payload=await assembleResponse(entry.value,responses) as {attachment_signer:string;request:{thread:string;text:string;created:number;attachments:AttachmentManifest[]};result:{id:number;status:string;events:Message['events']}};
    if(!payload?.request||payload.request.thread!==thread.id||!payload.result)throw new Error('Некорректный зашифрованный ответ.');
+   const dispatch=responses.get('dispatch:'+record)?.value as {reason?:string;observed_at?:number}|undefined;
+   const waiting=payload.result.status==='queued'&&dispatch?.observed_at&&Date.now()/1000-dispatch.observed_at<120
+     ? dispatch.reason:undefined;
+   const status=waiting==='desktop_writer_lock'?'waiting_for_task':waiting==='task_settings_unavailable'?'waiting_for_settings':payload.result.status;
    messages.push({id:payload.result.id,sender:Number(s.account),thread:thread.id,text:payload.request.text,created:payload.request.created,
-     expires:0,status:payload.result.status==='queued'?'queued':'delivered',snapshot:record,result_status:payload.result.status,events:payload.result.events,attachments:payload.request.attachments});
+     expires:0,status:payload.result.status==='queued'?'queued':'delivered',snapshot:record,result_status:status,events:payload.result.events,attachments:payload.request.attachments});
    for(const manifest of payload.request.attachments){
     const previous=downloads.get(manifest.id);
     if(previous&&JSON.stringify(previous)!==JSON.stringify({scope:thread.id,manifest,signer:payload.attachment_signer}))throw new Error('Идентификатор вложения повторён.');

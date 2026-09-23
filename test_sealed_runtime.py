@@ -60,3 +60,14 @@ class SealedRuntimeTests(unittest.TestCase):
             with self.assertRaises(BridgeError):queue.tick(self.api)
             with self.assertRaises(BridgeError):queue.begin(-1,'task','old',api=self.api)
         self.api.call.assert_not_called()
+
+    def test_waiting_reason_is_published_under_task_key(self):
+        self.runtime.sealed.receive('task',{'envelope':self.envelope})
+        ident=self.runtime.pending()['messages'][0]['id']
+        self.runtime.channel.snapshot=Mock()
+        self.runtime.health({'status':'waiting_for_tasks','requests':[{'id':ident,'reason':'desktop_writer_lock'}]})
+        args=self.runtime.channel.snapshot.call_args_list[0].args
+        self.assertEqual(args[:3],('task','response','dispatch:'+self.intent['request_id']))
+        self.assertEqual(args[3]['reason'],'desktop_writer_lock')
+        self.runtime.health({'status':'idle'})
+        self.assertIsNone(self.runtime.channel.snapshot.call_args_list[-2].args[3]['reason'])

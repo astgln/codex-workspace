@@ -26,6 +26,13 @@ class SealedRuntime:
         try:
             rows=self.db.execute("SELECT status,count(*) FROM requests WHERE json_type(payload,'$.encrypted_envelope')='object' GROUP BY status").fetchall()
             counts=dict(rows)
+            waiting={item['id']:item['reason'] for item in result.get('requests',[])
+                     if item.get('reason') in ('desktop_writer_lock','task_settings_unavailable')}
+            for row in self.db.execute("SELECT id,payload FROM requests WHERE status='pending'").fetchall():
+                item=json.loads(row['payload'])
+                if not isinstance(item.get('encrypted_envelope'),dict):continue
+                self.channel.snapshot(item['thread'],'response','dispatch:'+item['request_id'],{
+                    'reason':waiting.get(row['id']), 'observed_at':int(time.time())})
             self.channel.snapshot('workspace','catalog','worker',{
                 'worker':{**summary(result),'observed_at':int(time.time())},
                 'queue':{'queued':counts.get('pending',0)},

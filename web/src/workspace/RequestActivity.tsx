@@ -4,6 +4,8 @@ export function RequestActivity({message, online}:{message:Message; online:boole
   if (['completed', 'failed', 'needs_input'].includes(message.result_status || '')) return null;
   if (!['queued', 'delivered'].includes(message.status)) return null;
   const text = !online ? 'Ожидаю подключения Codex…'
+    : message.result_status === 'waiting_for_task' ? 'Ожидаем освобождения задачи в Codex…'
+    : message.result_status === 'waiting_for_settings' ? 'Ожидаем доступ к настройкам задачи…'
     : message.result_status === 'running' ? 'Думаю…'
     : message.status === 'queued' ? 'В очереди Codex…'
     : 'Ожидаю ответа Codex…';

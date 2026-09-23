@@ -7,7 +7,7 @@ import type { useThreadHistory } from '../History';
 import { PublicEvent } from './PublicEvent';
 import { RequestActivity } from './RequestActivity';
 
-const statusLabels:Record<string,string>={queued:'Ожидает Codex',delivered:'Передано в Codex',rejected:'Отклонено',expired:'Истёк срок запроса',target_unavailable:'Тред недоступен',superseded:'Заменено новой версией',running:'Codex работает',completed:'Ответ готов',failed:'Ошибка обработки',needs_input:'Нужен ответ'};
+const statusLabels:Record<string,string>={waiting_for_task:'Ожидаем освобождения задачи в Codex',waiting_for_settings:'Ожидаем доступ к настройкам задачи',queued:'Ожидает Codex',delivered:'Передано в Codex',rejected:'Отклонено',expired:'Истёк срок запроса',target_unavailable:'Тред недоступен',superseded:'Заменено новой версией',running:'Codex работает',completed:'Ответ готов',failed:'Ошибка обработки',needs_input:'Нужен ответ'};
 
 type Props = {
  state: WorkspaceState;

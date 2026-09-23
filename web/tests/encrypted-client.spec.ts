@@ -51,6 +51,9 @@ test('encrypted session restores catalog/history, sends only ciphertext and reje
   await add('task','history','message',{id:'message',position:'001',role:'assistant',text:'private old answer',created:900});
   await add('task','history','checkpoint',{synced_at:1000});
   await add('task','response','request',{request:{thread:'task',text:'private old request',created:999,attachments:[]},result:{id:-1,status:'completed',events:[]}});
+  await add('task','response','dispatch:request',{reason:'desktop_writer_lock',observed_at:Math.floor(Date.now()/1000)});
+  await add('task','response','waiting',{request:{thread:'task',text:'waiting request',created:999,attachments:[]},result:{id:-2,status:'queued',events:[]}});
+  await add('task','response','dispatch:waiting',{reason:'desktop_writer_lock',observed_at:Math.floor(Date.now()/1000)});
   await add('task','push','preview',{thread:'task',title:'private notification',body:'private push text',created:Math.floor(Date.now()/1000)});
   (window as any).invitationReply=async(record:string)=>{
    const scope='device:'+device.deviceStamp;
@@ -66,9 +69,9 @@ test('encrypted session restores catalog/history, sends only ciphertext and reje
   const loaded=await client.initializeEncryption(state);
   const history=await client.encryptedHistory('task');
   const message=await client.encryptedSend('task','private new request','test-request-id',[]);
-  return {title:loaded.projects[0].title,old:loaded.messages[0].text,history:history.messages[0].text,synced:history.synced_at,status:message.status};
+  return {title:loaded.projects[0].title,old:loaded.messages[0].text,history:history.messages[0].text,synced:history.synced_at,status:message.status,resultStatus:loaded.messages[0].result_status,waitingStatus:loaded.messages[1].result_status};
  },fixture.state);
- expect(result).toEqual({title:'private project',old:'private old request',history:'private old answer',synced:1000,status:'queued'});
+ expect(result).toEqual({title:'private project',old:'private old request',history:'private old answer',synced:1000,status:'queued',resultStatus:'completed',waitingStatus:'waiting_for_task'});
  expect(transmitted.join('\n')).not.toContain('private');
  // A lost response must retry the exact encrypted invitation, not create another one.
  for(let attempt=0;attempt<2;attempt++){
