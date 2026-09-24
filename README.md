@@ -35,4 +35,4 @@ cd web && npx playwright install chromium && npx playwright test
 ```
 
 Интерфейс React/TypeScript использует компоненты LuSeptem/codex-webui.
-Лицензии и атрибуция сохранены в `licenses/` и `THIRD_PARTY_NOTICES.md`.
+Лицензия исходных компонентов сохранена в [web/licenses/codex-webui-MIT.txt](web/licenses/codex-webui-MIT.txt).

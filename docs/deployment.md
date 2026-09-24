@@ -38,10 +38,10 @@ npm --prefix web run build
 codex-workspace deploy publish
 ```
 
-`deploy_vm.py` требует заранее заданного `secret` в deployment.json. Это
+`codex-workspace provision` требует заранее заданного `secret` в deployment.json. Это
 инструмент VM provisioning, а не автоматическое создание Telegram-бота и Lockbox.
 Для отдельной разрешённой сети можно явно указать `--ssh-interface en0` у
-`release_vm.py publish`. Интерфейс должен уже существовать; маршруты не меняются.
+`codex-workspace deploy publish`. Интерфейс должен уже существовать; маршруты не меняются.
 
 SSH host key берётся из аутентифицированного Compute API, проверка host key
 обязательна. Артефакт передаётся SCP и сверяется по SHA-256. Установщик получает
@@ -117,7 +117,7 @@ git worktree add worktrees/experimental experimental/multi-user
 не скачивает и не передаёт. Проверьте исходящий HTTPS VM к oauth.telegram.org.
 
 Если Compute API временно недоступен, ранее проверенный ключ этой же VM можно
-использовать явно: `release_vm.py publish --use-pinned-host-key`. Файл должен
+использовать явно: `codex-workspace deploy publish --use-pinned-host-key`. Файл должен
 содержать ровно закреплённый адрес и один Ed25519-ключ, принадлежать текущему
 пользователю и быть защищён от чужой записи. `StrictHostKeyChecking=yes` остаётся
 включённым; смена ключа или адреса останавливает SSH. Первичную привязку этот
