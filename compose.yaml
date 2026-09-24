@@ -1,0 +1,52 @@
+services:
+  relay:
+    image: codex-workspace:local
+    build:
+      context: .
+      dockerfile: ops/docker/Dockerfile
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+    tmpfs: ["/tmp:size=64m,mode=1777"]
+    configs:
+      - source: relay_settings
+        target: /run/config/relay.json
+    volumes:
+      - workspace-data:/var/lib/codex-workspace
+    ports:
+      - "127.0.0.1:${WORKSPACE_PORT:-8080}:8080"
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: '3'}
+  https:
+    image: caddy:2
+    profiles: [https]
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:size=32m,mode=1777"]
+    environment:
+      WORKSPACE_ORIGIN: ${WORKSPACE_ORIGIN:?Set WORKSPACE_ORIGIN to the exact HTTPS origin}
+    ports: ['80:80', '443:443']
+    volumes:
+      - ./ops/docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      relay:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: '3'}
+configs:
+  relay_settings:
+    file: ${WORKSPACE_RELAY_CONFIG:-./relay.json}
+volumes:
+  workspace-data:
+  caddy-data:
+  caddy-config:

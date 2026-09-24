@@ -23,3 +23,6 @@ web/playwright-report/
 /dist/
 
 .venv/
+
+/relay.json
+/compose.env

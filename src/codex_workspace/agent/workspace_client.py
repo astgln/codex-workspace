@@ -15,11 +15,10 @@ class API:
     def __init__(self, config, *, state=None):
         self.state = STATE if state is None else Path(state)
         self.url = config['url']
-        parsed = urllib.parse.urlparse(self.url)
-        if (parsed.scheme != 'https' or not parsed.hostname or
-                not parsed.hostname.endswith('.apigw.yandexcloud.net') or parsed.path or
-                parsed.username or parsed.password or parsed.query or parsed.fragment):
-            raise BridgeError('Invalid cloud endpoint')
+        from codex_workspace.crypto.key_material import origin
+        from codex_workspace.crypto.workspace_crypto import CryptoError
+        try:origin(self.url)
+        except CryptoError:raise BridgeError('Invalid HTTPS endpoint') from None
         path = Path(config['key_file'])
         if path.stat().st_mode & 0o077:
             raise BridgeError('Client key file must have mode 0600')

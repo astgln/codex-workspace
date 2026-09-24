@@ -8,12 +8,14 @@
 
 ## Устройство
 
-Браузер/PWA → HTTPS API Gateway → FastAPI на VM → SQLite.
+Браузер/PWA → HTTPS reverse proxy → FastAPI relay → SQLite.
+Сервер запускается через Docker Compose либо на VM за API Gateway.
 На компьютере две службы исходящими HTTPS-запросами получают работу и публикуют
 историю. Выполнение использует `codex exec resume` в исходной задаче с её правами.
 Входящие соединения к компьютеру и управляющий чат не требуются.
 
-- [Установка с нуля](docs/installation.md)
+- [Docker Compose и свой HTTPS-домен](docs/docker.md)
+- [Установка в Yandex Cloud](docs/installation.md)
 - [Архитектура и поток данных](docs/architecture.md)
 - [Развёртывание и обновление](docs/deployment.md)
 - [Локальные службы и восстановление](docs/collector-routing.md)

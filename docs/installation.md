@@ -7,8 +7,8 @@ Node.js 22, Git, SSH, настроенный `yc`, каталог Yandex Cloud �
 при неизвестном формате синхронизация останавливается. Windows/Linux-сборщики
 не проверены; установщик пользовательских служб рассчитан на macOS.
 
-Сейчас транспорт принимает только HTTPS origin `*.apigw.yandexcloud.net`.
-Не подставляйте произвольный домен или localhost. Входящих соединений к компьютеру
+Это руководство описывает вариант с API Gateway. Для собственного HTTPS-домена
+и Docker Compose используйте [контейнерное развёртывание](docker.md). Входящих соединений к компьютеру
 нет, но содержимое задач доступно доверенным устройствам. Разрешение организации
 на передачу рабочих данных нужно получить отдельно.
 
@@ -39,7 +39,7 @@ npm --prefix web run build
 каталога, ID Gateway и его HTTPS-домен. Вход через Telegram не нужен.
 
 ```sh
-codex-workspace setup --folder YOUR_FOLDER_ID --gateway YOUR_GATEWAY_ID \
+codex-workspace setup --target yandex --folder YOUR_FOLDER_ID --gateway YOUR_GATEWAY_ID \
   --origin https://YOUR_GATEWAY_DOMAIN.apigw.yandexcloud.net
 ```
 

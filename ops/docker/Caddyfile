@@ -1,0 +1,3 @@
+{$WORKSPACE_ORIGIN} {
+    reverse_proxy relay:8080
+}

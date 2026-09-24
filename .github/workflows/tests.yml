@@ -40,3 +40,13 @@ jobs:
       - run: cd web && npx playwright test --browser webkit tests/crypto.spec.ts tests/pairing.spec.ts tests/vault.spec.ts tests/encrypted-attachments.spec.ts
         env:
           CRYPTO_TEST_PYTHON: python
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install ".[agent,dev]"
+      - name: HTTPS container smoke and volume persistence
+        run: bash tests/containers/run.sh

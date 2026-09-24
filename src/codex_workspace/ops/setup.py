@@ -8,19 +8,21 @@ import re
 import secrets
 import subprocess
 import sys
-from urllib.parse import urlsplit
+from codex_workspace.crypto.key_material import origin as validate_origin
 from codex_workspace.devices.e2ee_admin import write_private
 from codex_workspace.paths import state_directory
 
 
-def initialize(directory, origin, folder, gateway, branch):
-    parsed=urlsplit(origin)
-    if (parsed.scheme!='https' or not parsed.hostname or
-        not parsed.hostname.endswith('.apigw.yandexcloud.net') or
-        parsed.netloc!=parsed.hostname or parsed.path or parsed.query or parsed.fragment):
-        raise ValueError('Use the exact HTTPS Yandex API Gateway origin without a trailing slash')
-    if not all(re.fullmatch(r'[a-zA-Z0-9_-]{1,100}',x) for x in (folder,gateway)):
-        raise ValueError('Invalid cloud identifier')
+def initialize(directory, origin, folder=None, gateway=None, branch='main', target='yandex'):
+    validate_origin(origin)
+    if target not in ('docker','yandex'):raise ValueError('Unsupported deployment target')
+    if target=='yandex':
+        if not origin.endswith('.apigw.yandexcloud.net'):
+            raise ValueError('Yandex deployment needs an API Gateway origin')
+        if not all(isinstance(x,str) and re.fullmatch(r'[a-zA-Z0-9_-]{1,100}',x) for x in (folder,gateway)):
+            raise ValueError('Invalid cloud identifier')
+    elif folder is not None or gateway is not None:
+        raise ValueError('Cloud identifiers do not apply to Docker')
     if branch not in ('main','experimental/multi-user'):
         raise ValueError('Unsupported release branch')
     directory=Path(directory).expanduser().absolute()
@@ -31,7 +33,7 @@ def initialize(directory, origin, folder, gateway, branch):
     write_private(directory/'client-key.env','BRIDGE_CLIENT_KEY='+token+'\n')
     save('web.json',{'url':origin,'key_file':str(directory/'client-key.env'),'paused':False,'project_id':project})
     save('history-catalog.json',{'project_id':project,'projects':[],'threads':[]})
-    save('deployment.json',{'folder':folder,'gateway':gateway,'project':project,'settings':{'owner':'owner'},
+    if target=='yandex':save('deployment.json',{'folder':folder,'gateway':gateway,'project':project,'settings':{'owner':'owner'},
         'client_hash':hashlib.sha256(token.encode()).hexdigest(),'url':origin,'release_branch':branch})
     env={**os.environ,'CODEX_WORKSPACE_STATE':str(directory)}
     subprocess.run([sys.executable,'-m','codex_workspace','devices','--state',str(directory),'init',
@@ -39,7 +41,16 @@ def initialize(directory, origin, folder, gateway, branch):
         '--package',str(directory/'recovery.json'),'--code-file',str(directory/'recovery-code.txt')],env=env,check=True)
     subprocess.run([sys.executable,'-m','codex_workspace','devices','--state',str(directory),'auth-pin',
         '--output',str(directory/'device-auth.json')],env=env,check=True)
-    write_private(directory/'e2ee-required','codex-workspace/e2ee/v1\n')
+    if target=='docker':
+        export=directory/'relay';export.mkdir(mode=0o700)
+        pin=json.loads((directory/'device-auth.json').read_text())
+        config={'OWNER_USERNAME':'owner','CLIENT_KEY_HASH':hashlib.sha256(token.encode()).hexdigest(),
+                'PROJECT_ID':project,'PUBLIC_ORIGIN':origin,'auth_pin':pin}
+        write_private(export/'relay.json',json.dumps(config)+'\n')
+        # Public server settings only: readable by the container's non-root UID.
+        (export/'relay.json').chmod(0o644)
+        write_private(export/'compose.env','WORKSPACE_ORIGIN='+origin+'\n')
+    write_private(directory/'e2ee-required' ,'codex-workspace/e2ee/v1\n')
     return directory
 
 
@@ -47,13 +58,14 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--state',type=Path,default=state_directory())
     parser.add_argument('--origin',required=True)
-    parser.add_argument('--folder',required=True)
-    parser.add_argument('--gateway',required=True)
+    parser.add_argument('--target',choices=['docker','yandex'],default='docker')
+    parser.add_argument('--folder')
+    parser.add_argument('--gateway')
     parser.add_argument('--branch',choices=['main','experimental/multi-user'],default='main')
     args=parser.parse_args();os.umask(0o077)
-    try:initialize(args.state,args.origin,args.folder,args.gateway,args.branch)
+    try:initialize(args.state,args.origin,args.folder,args.gateway,args.branch,args.target)
     except (OSError,ValueError,subprocess.CalledProcessError):
         raise SystemExit('Setup stopped. Existing state is never overwritten; partial state is retained for inspection. No secrets printed.') from None
-    print('Fresh encrypted installation prepared. Store the recovery package and code separately; then provision and deploy the relay.')
+    print('Fresh encrypted installation prepared. Store the recovery package and code separately; then deploy the relay using the selected target.')
 
 if __name__=='__main__':main()
