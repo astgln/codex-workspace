@@ -31,3 +31,5 @@ export async function encryptedUpload(thread:string,file:File,ensureActive:()=>v
   ensureActive();
   return request<Attachment>('/web/uploads/finish',{id:upload.id});
 }
+
+export const encryptedControl=(action:string,args:unknown)=>request('/web/'+(action==='decide'?'decisions':action),args);
