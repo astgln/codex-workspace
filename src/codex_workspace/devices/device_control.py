@@ -38,12 +38,12 @@ class DeviceControl:
                 command=json.loads(raw)
                 now=int(time.time())
                 if (not isinstance(command,dict) or set(command) not in ({'action','issued_at','expires_at'},{'action','issued_at','expires_at','args'})
-                        or command['action'] not in ('pair-device','list-devices','grants','member-policy','decide')
+                        or command['action'] not in ('pair-device','list-devices','grants','member-policy','decide','add-member')
                         or type(command['issued_at']) is not int or type(command['expires_at']) is not int
                         or command['issued_at']>now+60 or command['expires_at']<=now
                         or not 0<command['expires_at']-command['issued_at']<=600):
                     raise CryptoError('Invalid device control intent')
-                if command['action'] in ('grants','member-policy','decide'):
+                if command['action'] in ('grants','member-policy','decide','add-member'):
                     if not self.catalog or not isinstance(command.get('args'),dict):raise CryptoError('Missing signed policy arguments')
                     from codex_workspace.devices.sealed_access import LocalAccess
                     policy=LocalAccess(self.vault,self.trust)

@@ -81,6 +81,9 @@ def main():
                 with KeyVault.create(path,args.origin) as vault:
                     for scope in scopes:vault.scope_key(scope)
                     backup(vault,args.package,args.code_file)
+                    from codex_workspace.devices.sealed_access import LocalAccess
+                    with TrustStore(args.state/'web-queue.sqlite3',vault.workspace) as trust:
+                        LocalAccess(vault,trust).bootstrap(1,[])
                 print('Local keys and recovery package created. Live encryption remains unchanged.')
                 return
             if args.command=='restore':

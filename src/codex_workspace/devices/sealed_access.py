@@ -1,5 +1,6 @@
 """Endpoint-owned experimental ACL; the relay cannot widen cryptographic grants."""
 import json
+import hashlib
 from codex_workspace.domain import access
 from codex_workspace.crypto.workspace_crypto import CryptoError
 
@@ -57,7 +58,17 @@ class LocalAccess:
         self.vault.assert_ready()
         uid,state=self.identity(device,catalog)
         if not access.is_owner(state,uid,'owner'):raise CryptoError('Owner signature required')
-        if action=='grants':access.set_grants(state,uid,'owner',body)
+        if action=='add-member':
+            if not isinstance(body,dict) or set(body)!={'name'} or not isinstance(body['name'],str):raise CryptoError('Invalid member name')
+            name=body['name'].strip()
+            if not 1<=len(name)<=64 or any(ord(c)<32 for c in name) or name.casefold()=='owner':raise CryptoError('Invalid member name')
+            existing=next((n for n in state['bindings'] if n.casefold()==name.casefold()),None)
+            if existing is None:
+                if len(state['bindings'])>=1000:raise CryptoError('Member limit reached')
+                member_id=int.from_bytes(hashlib.sha256((self.vault.workspace+'\0'+name.casefold()).encode()).digest()[:6],'big')+1
+                if member_id in state['bindings'].values():raise CryptoError('Account identifier collision')
+                state['bindings'][name]=member_id
+        elif action=='grants':access.set_grants(state,uid,'owner',body)
         elif action=='member-policy':access.set_member_policy(state,uid,'owner',body)
         else:raise CryptoError('Unsupported local policy action')
         self._prepare_state(state,catalog)

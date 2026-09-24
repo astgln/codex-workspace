@@ -48,7 +48,6 @@ def registry(store, body, origin, *, now=None):
         if (not isinstance(d, dict) or set(d) != {'id','public_key','uid'} or type(d['uid']) is not int or
             not 0 < d['uid'] < 2**53 or d['id'] in seen or signer_id(key(d['public_key'])) != d['id']):
             raise ValueError('Invalid device identity')
-        if d['uid'] != p['owner']:raise ValueError('Single-user registry required')
         seen.add(d['id'])
     value = json.dumps(p, separators=(',', ':'))
     db = connect(store)
@@ -59,7 +58,12 @@ def registry(store, body, origin, *, now=None):
         db.execute('INSERT OR REPLACE INTO auth_registry VALUES(1,?,?,?)', (p['revision'], value, body['signature']))
         db.commit()
     finally: db.close()
-    store.mutate(lambda state: state['bindings'].update({os.environ.get('OWNER_USERNAME','owner'):p['owner']}))
+    def bind(state):
+        owner=os.environ.get('OWNER_USERNAME','owner')
+        state['bindings'][owner]=p['owner']
+        for device in p['devices']:
+            if device['uid'] not in state['bindings'].values():state['bindings']['member-'+str(device['uid'])]=device['uid']
+    store.mutate(bind)
     return {'ok': True}
 
 

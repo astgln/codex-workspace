@@ -73,3 +73,26 @@ class AccessTests(unittest.TestCase):
         self.assertEqual(records['access']['user']['id'],20)
         self.assertEqual(records['access']['user']['role'],'member')
         self.assertEqual(records['access']['members'],[])
+
+    def test_internal_member_creation_is_owner_only_idempotent_and_has_no_grants(self):
+        with self.assertRaises(CryptoError):self.access.prepare(self.member,'add-member',{'name':'New person'},self.catalog)
+        self.access.prepare(self.owner,'add-member',{'name':'New person'},self.catalog);self.access.reconcile()
+        state=self.access.state(self.catalog);ident=state['bindings']['New person']
+        from codex_workspace.domain import access
+        self.assertTrue(access.requires_approval(state,ident,'owner'))
+        self.assertFalse(access.permitted_threads(state,ident,'owner'))
+        self.access.prepare(self.owner,'add-member',{'name':'New person'},self.catalog);self.access.reconcile()
+        self.assertEqual(self.access.state(self.catalog)['bindings']['New person'],ident)
+        with self.assertRaises(CryptoError):self.access.prepare(self.owner,'add-member',{'name':'owner'},self.catalog)
+
+    def test_signed_registry_preserves_local_accounts_and_excludes_revoked_devices(self):
+        from codex_workspace.devices.auth_registry import identities,snapshot
+        from codex_workspace.crypto.device_auth import message,verify
+        owner,mapping=identities(self.trust)
+        self.assertEqual(owner,10);self.assertEqual(mapping,{self.owner:10,self.member:20})
+        first=snapshot(self.vault,self.trust)
+        verify(self.vault.authority.public_key(),first['signature'],message('registry',first['payload']))
+        self.trust.revoke_device(self.member)
+        second=snapshot(self.vault,self.trust)
+        self.assertGreater(second['payload']['revision'],first['payload']['revision'])
+        self.assertEqual([d['id'] for d in second['payload']['devices']],[self.owner])
