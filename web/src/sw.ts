@@ -1,4 +1,4 @@
-import {encryptedPush,hasEncryptedDevices} from './crypto/push';
+import {encryptedPush,hasEncryptedDevices} from './features/encryption/push';
 // ServiceWorker globals are supplied by the browser, outside the DOM window.
 declare const self:any;
 // No conversation or authenticated API data is cached on the device.

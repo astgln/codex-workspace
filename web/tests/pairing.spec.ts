@@ -4,9 +4,9 @@ test('pairing uses a fragment, pins the authority, and rejects expired links', a
   await page.goto('/');
   const result = await page.evaluate(async () => {
     // @ts-expect-error Vite serves endpoint crypto directly for these tests.
-    const c = await import('/src/crypto/envelope.ts');
+    const c = await import('/src/features/encryption/envelope.ts');
     // @ts-expect-error Vite serves endpoint crypto directly for these tests.
-    const p = await import('/src/crypto/pairing.ts');
+    const p = await import('/src/features/encryption/pairing.ts');
     const authority = await crypto.subtle.generateKey({name: 'ECDSA', namedCurve: 'P-256'}, true, ['sign', 'verify']);
     const device = await crypto.subtle.generateKey({name: 'ECDSA', namedCurve: 'P-256'}, false, ['sign', 'verify']);
     const now = Math.floor(Date.now() / 1000);

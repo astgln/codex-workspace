@@ -12,9 +12,9 @@ test('browser encrypts an attachment Python can verify without plaintext upload 
   });
   const result = await page.evaluate(async () => {
     // @ts-expect-error Vite test import.
-    const c=await import('/src/crypto/envelope.ts');
+    const c=await import('/src/features/encryption/envelope.ts');
     // @ts-expect-error Vite test import.
-    const a=await import('/src/crypto/attachments.ts');
+    const a=await import('/src/features/encryption/attachments.ts');
     const raw=crypto.getRandomValues(new Uint8Array(32));
     const key={scope:'task',epoch:1,key:c.encode(raw),id:await c.keyId(raw)};
     const device=await crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},false,['sign','verify']);
@@ -41,9 +41,9 @@ test('download authenticates ciphertext, task and sender before returning bytes'
  await page.goto('/');
  const fixture=await page.evaluate(async()=>{
   // @ts-expect-error Vite test module
-  const c=await import('/src/crypto/envelope.ts');
+  const c=await import('/src/features/encryption/envelope.ts');
   // @ts-expect-error Vite test module
-  const a=await import('/src/crypto/attachments.ts');
+  const a=await import('/src/features/encryption/attachments.ts');
   const raw=crypto.getRandomValues(new Uint8Array(32));
   const key={scope:'task',epoch:1,key:c.encode(raw),id:await c.keyId(raw)};
   const signer=await crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign','verify']);
@@ -58,7 +58,7 @@ test('download authenticates ciphertext, task and sender before returning bytes'
  });
  const run=()=>page.evaluate(async fixture=>{
   // @ts-expect-error Vite test module
-  const a=await import('/src/crypto/attachments.ts');
+  const a=await import('/src/features/encryption/attachments.ts');
   const bundle={keys:[fixture.key]};
   const bytes=await a.downloadEncryptedAttachment('workspace','task',fixture.manifest,fixture.publicKey,bundle,()=>{});
   return new TextDecoder().decode(bytes);

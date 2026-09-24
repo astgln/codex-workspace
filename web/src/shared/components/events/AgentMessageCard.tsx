@@ -1,0 +1,40 @@
+/* Adapted from LuSeptem/codex-webui; MIT notice in licenses/. */
+import { useState, useCallback } from 'react';
+import type { AgentMessageItem } from '@/shared/types/api';
+import { Copy, Check } from 'lucide-react';
+import { Markdown } from './Markdown';
+import { useToast } from '@/shared/stores/toast';
+
+interface Props {
+  item: AgentMessageItem;
+  timestamp?: string;
+  showHeader?: boolean;
+}
+
+export function AgentMessageCard({ item, timestamp, showHeader = true }: Props) {
+  const [copied, setCopied] = useState(false);
+  const { toast } = useToast();
+  const copy = useCallback(() => {
+    navigator.clipboard.writeText(item.text ?? '').then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+      toast({ title: 'Скопировано', description: 'Ответ скопирован в буфер обмена', type: 'success', duration: 2000 });
+    }).catch(() => {
+      toast({ title: 'Не удалось скопировать', description: 'Выделите текст вручную', type: 'error', duration: 3000 });
+    });
+  }, [item.text, toast]);
+
+  return <div className="assistant-message">
+    <div className="assistant-message-heading">
+      {showHeader && <span className="assistant-message-author">Codex</span>}
+      {timestamp && <time dateTime={timestamp} title={new Date(timestamp).toString()}>{new Date(timestamp).toLocaleString('ru-RU')}</time>}
+
+    </div>
+    <Markdown className="assistant-message-text">{item.text}</Markdown>
+    <div className="assistant-message-actions">
+      <button className="assistant-copy" onClick={copy} title={copied ? 'Скопировано' : 'Копировать ответ'} aria-label={copied ? 'Скопировано' : 'Копировать ответ'}>
+        {copied ? <Check size={14}/> : <Copy size={14}/>}
+      </button>
+    </div>
+  </div>;
+}

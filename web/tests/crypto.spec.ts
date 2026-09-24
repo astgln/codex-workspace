@@ -11,7 +11,7 @@ test('Python and browser authenticate and decrypt each other, including recovery
   await page.goto('/');
   const result = await page.evaluate(async (v) => {
     // @ts-expect-error Vite serves this test import in the browser.
-    const c = await import('/src/crypto/envelope.ts');
+    const c = await import('/src/features/encryption/envelope.ts');
     const publicKey = await crypto.subtle.importKey('spki', c.decode(v.public, 256), {name: 'ECDSA', namedCurve: 'P-256'}, true, ['verify']);
     const privateKey = await crypto.subtle.importKey('pkcs8', c.decode(v.private, 512), {name: 'ECDSA', namedCurve: 'P-256'}, false, ['sign']);
     const plaintext = await c.openEnvelope(c.decode(v.key, 32), publicKey, v.context, v.envelope);
@@ -32,7 +32,7 @@ test('browser rejects changed context, ciphertext, signer, version and plaintext
   await page.goto('/');
   const checks = await page.evaluate(async v => {
     // @ts-expect-error Vite serves this test import in the browser.
-    const c = await import('/src/crypto/envelope.ts');
+    const c = await import('/src/features/encryption/envelope.ts');
     const publicKey = await crypto.subtle.importKey('spki', c.decode(v.public, 256), {name: 'ECDSA', namedCurve: 'P-256'}, true, ['verify']);
     const impostor = await crypto.subtle.generateKey({name: 'ECDSA', namedCurve: 'P-256'}, true, ['sign', 'verify']);
     const key = c.decode(v.key, 32);

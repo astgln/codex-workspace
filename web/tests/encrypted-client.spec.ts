@@ -27,9 +27,9 @@ test('encrypted session restores catalog/history, sends only ciphertext and reje
  await page.goto('https://workspace.test/');
  const fixture=await page.evaluate(async()=>{
   // @ts-expect-error Vite module
-  const c=await import('/src/crypto/envelope.ts');
+  const c=await import('/src/features/encryption/envelope.ts');
   // @ts-expect-error Vite module
-  const v=await import('/src/crypto/vault.ts');
+  const v=await import('/src/features/encryption/vault.ts');
   const workspace=c.encode(crypto.getRandomValues(new Uint8Array(32)));
   const root=await crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign','verify']);
   const authority=c.encode(new Uint8Array(await crypto.subtle.exportKey('spki',root.publicKey)));
@@ -65,7 +65,7 @@ test('encrypted session restores catalog/history, sends only ciphertext and reje
  records=fixture.records;
  const result=await page.evaluate(async state=>{
   // @ts-expect-error Vite module
-  const client=await import('/src/crypto/client.ts');
+  const client=await import('/src/features/encryption/client.ts');
   const loaded=await client.initializeEncryption(state);
   const history=await client.encryptedHistory('task');
   const message=await client.encryptedSend('task','private new request','test-request-id',[]);
@@ -77,7 +77,7 @@ test('encrypted session restores catalog/history, sends only ciphertext and reje
  for(let attempt=0;attempt<2;attempt++){
   expect(await page.evaluate(async()=>{
    // @ts-expect-error Vite module
-   const client=await import('/src/crypto/client.ts');
+   const client=await import('/src/features/encryption/client.ts');
    try{await client.createDeviceInvitation();return false;}catch{return true;}
   })).toBe(true);
  }
@@ -87,7 +87,7 @@ test('encrypted session restores catalog/history, sends only ciphertext and reje
  records[reply.scope+':control-result']=reply.rows;rejectControl=false;
  const invitation=await page.evaluate(async()=>{
   // @ts-expect-error Vite module
-  const client=await import('/src/crypto/client.ts');
+  const client=await import('/src/features/encryption/client.ts');
   return client.createDeviceInvitation();
  });
  expect(invitation.link).toContain('/#pair=');
@@ -95,13 +95,13 @@ test('encrypted session restores catalog/history, sends only ciphertext and reje
  expect(transmitted.join('\n')).not.toContain('fixture-only');
  const downgrade=await page.evaluate(async()=>{
   // @ts-expect-error Vite module
-  const client=await import('/src/crypto/client.ts');
+  const client=await import('/src/features/encryption/client.ts');
   try{await client.initializeEncryption({user:{id:10},threads:[],messages:[]});return false;}catch{return true;}
  });
  expect(downgrade).toBe(true);
  const preview=await page.evaluate(async envelope=>{
   // @ts-expect-error Vite module
-  const p=await import('/src/crypto/push.ts');
+  const p=await import('/src/features/encryption/push.ts');
   const valid=await p.encryptedPush(envelope);
   const changed=structuredClone(envelope);changed.context[1]='other-task';
   const invalid=await p.encryptedPush(changed);return {valid,invalid};

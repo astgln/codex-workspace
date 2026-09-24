@@ -10,7 +10,7 @@ test('keys survive a new tab and reject rollback, recipient changes and local re
   await page.goto('/');
   const publicKey = await page.evaluate(async workspace => {
     // @ts-expect-error Vite test import.
-    const v = await import('/src/crypto/vault.ts');
+    const v = await import('/src/features/encryption/vault.ts');
     const [first, second] = await Promise.all([v.getOrCreateDevice('10', workspace), v.getOrCreateDevice('10', workspace)]);
     if (first.deviceStamp !== second.deviceStamp) throw new Error('Concurrent device creation split the keys');
     if (first.signing.privateKey.extractable) throw new Error('Signing key must not be exportable');
@@ -20,13 +20,13 @@ test('keys survive a new tab and reject rollback, recipient changes and local re
     origin: 'https://workspace.example', public: publicKey, workspace})}));
   await page.evaluate(async f => {
     // @ts-expect-error Vite test import.
-    const v = await import('/src/crypto/vault.ts');
+    const v = await import('/src/features/encryption/vault.ts');
     await v.installBundle('10', f.initial, {workspace: f.initial.workspace, origin: f.initial.origin, authority: f.initial.authority});
   }, fixtures);
   const next = await context.newPage(); await next.goto('/');
   const result = await next.evaluate(async ({f, workspace}) => {
     // @ts-expect-error Vite test import.
-    const v = await import('/src/crypto/vault.ts');
+    const v = await import('/src/features/encryption/vault.ts');
     const restored = await v.loadDevice('10', workspace);
     const expected = {workspace, origin: f.latest.origin, authority: f.latest.authority};
     await v.installBundle('10', f.latest, expected);
@@ -50,16 +50,16 @@ test('browser restores the Python recovery archive and rejects wrong code, origi
   await page.goto('/');
   const publicKey = await page.evaluate(async workspace => {
     // @ts-expect-error Vite test import.
-    const v = await import('/src/crypto/vault.ts');
+    const v = await import('/src/features/encryption/vault.ts');
     return v.publicDeviceKey(await v.getOrCreateDevice('10', workspace));
   }, workspace);
   const fixtures = JSON.parse(execFileSync(python, [helper], {encoding: 'utf8', input: JSON.stringify({
     origin: 'https://workspace.example', public: publicKey, workspace})}));
   const result = await page.evaluate(async f => {
     // @ts-expect-error Vite test import.
-    const r = await import('/src/crypto/recovery.ts');
+    const r = await import('/src/features/encryption/recovery.ts');
     // @ts-expect-error Vite test import.
-    const c = await import('/src/crypto/envelope.ts');
+    const c = await import('/src/features/encryption/envelope.ts');
     const recovered = await r.readRecovery(f.recovery, f.code, f.latest.origin);
     const checks = [];
     for (const [code, origin, revision] of [[await c.createRecoveryCode(), f.latest.origin, 1],

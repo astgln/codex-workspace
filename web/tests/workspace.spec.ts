@@ -5,7 +5,7 @@ async function fixture(page: Page) {
   const state = {weekly_quota:{used_percent:63,observed_at:Math.floor(Date.now()/1000),resets_at:Math.floor(Date.now()/1000)+86400},user:{id:10},threads,messages:[] as any[],catalog_updated:1,collector_seen:Date.now()/1000};
   const sent:any[] = [];
   let loggedIn=false;
-  await page.route('**/auth/**',route=>{
+  await page.route('http://127.0.0.1:5173/auth/**',route=>{
     const path=new URL(route.request().url()).pathname;
     if(path==='/auth/logout'){loggedIn=false;return route.fulfill({json:{ok:true}});}
     return loggedIn?route.fulfill({json:{csrf:'test-csrf',workspace:state}}):route.fulfill({status:401,json:{error:'login_required'}});

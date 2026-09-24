@@ -23,7 +23,7 @@ for(const paste of [false,true])test(`trusted link completes pairing and persist
  await page.goto('/');
  const fixture=await page.evaluate(async()=>{
    // @ts-expect-error Vite test module
-   const c=await import('/src/crypto/envelope.ts');
+   const c=await import('/src/features/encryption/envelope.ts');
    const authority=await crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign','verify']);
    const invite={v:1,workspace:c.encode(crypto.getRandomValues(new Uint8Array(32))),id:c.encode(crypto.getRandomValues(new Uint8Array(32))),
      secret:c.encode(crypto.getRandomValues(new Uint8Array(32))),authority:c.encode(new Uint8Array(await crypto.subtle.exportKey('spki',authority.publicKey))),expires:Math.floor(Date.now()/1000)+600};
@@ -38,7 +38,7 @@ for(const paste of [false,true])test(`trusted link completes pairing and persist
      expect(JSON.stringify(offer)).not.toContain(fixture.invite.secret);
      const grant=await page.evaluate(async({fixture,offer})=>{
        // @ts-expect-error Vite test module
-       const c=await import('/src/crypto/envelope.ts');
+       const c=await import('/src/features/encryption/envelope.ts');
        const privateKey=await crypto.subtle.importKey('jwk',fixture.privateKey,{name:'ECDSA',namedCurve:'P-256'},false,['sign']);
        const publicKey=await crypto.subtle.importKey('spki',c.decode(fixture.invite.authority,256),{name:'ECDSA',namedCurve:'P-256'},true,['verify']);
        const device=await crypto.subtle.importKey('spki',c.decode(offer.public_key,256),{name:'ECDSA',namedCurve:'P-256'},true,['verify']);
@@ -66,7 +66,7 @@ for(const paste of [false,true])test(`trusted link completes pairing and persist
  await expect(page.getByRole('status')).toContainText('Ключи проверены и сохранены');
  const persisted=await page.evaluate(async workspace=>{
    // @ts-expect-error Vite test module
-   const vault=await import('/src/crypto/vault.ts');
+   const vault=await import('/src/features/encryption/vault.ts');
    const device=await vault.loadDevice('10',workspace);
    return {revision:device?.bundle?.revision,exportable:device?.signing.privateKey.extractable,hash:location.hash};
  },fixture.invite.workspace);
@@ -76,7 +76,7 @@ for(const paste of [false,true])test(`trusted link completes pairing and persist
  await page.reload();
  const restored=await page.evaluate(async workspace=>{
   // @ts-expect-error Vite test module
-  const v=await import('/src/crypto/vault.ts');
+  const v=await import('/src/features/encryption/vault.ts');
   return (await v.loadDevice('10',workspace))?.bundle?.revision;
  },fixture.invite.workspace);
  expect(restored).toBe(1);
