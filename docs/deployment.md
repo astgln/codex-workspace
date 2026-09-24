@@ -1,5 +1,7 @@
 # Развёртывание
 
+Для новой установки начните с [пошагового руководства](installation.md).
+
 Используйте отдельные checkout, конфигурацию и базу для каждой ветки.
 Действующая установка Yandex Cloud закреплена за `experimental/multi-user`.
 `main` — отдельная однопользовательская сборка со schema 4; не публикуйте её
@@ -62,7 +64,7 @@ query-параметров. Серверу передаются `OWNER_USERNAME`
 
 ## Компьютер с Codex
 
-Файл `.local/web.json` содержит `url`, `key_file` и `paused`; `key_file` указывает
+Файл `.local/web.json` содержит `url`, `key_file`, `project_id` и `paused`; `key_file` указывает
 на файл 0600 с `BRIDGE_CLIENT_KEY`. Каталог проектов задаётся отдельно.
 Сохраните конфигурацию приватно; не копируйте её в сообщения или отчёты.
 
@@ -70,7 +72,8 @@ query-параметров. Серверу передаются `OWNER_USERNAME`
 codex-workspace history sync --catalog /absolute/path/to/catalog.json
 codex-workspace service install --codex /absolute/path/to/codex \
   --catalog /absolute/path/to/catalog.json
-codex-workspace history watch --catalog /absolute/path/to/catalog.json
+codex-workspace service install --kind history --codex /absolute/path/to/codex \
+  --catalog /absolute/path/to/catalog.json
 ```
 
 История должна работать отдельной пользовательской службой с закрытыми логами.

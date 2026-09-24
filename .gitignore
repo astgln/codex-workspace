@@ -21,3 +21,5 @@ web/playwright-report/
 *.egg-info/
 /build/
 /dist/
+
+.venv/

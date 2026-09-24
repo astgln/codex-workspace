@@ -19,11 +19,29 @@ def install_pin(directory,value):
     with os.fdopen(fd,'w') as output:json.dump(value,output)
 
 
+def install_mode(directory, workspace):
+    from codex_workspace.relay.encryption_mode import read
+    from types import SimpleNamespace
+    directory=Path(directory)
+    mode=read(SimpleNamespace(directory=directory))
+    if mode is not None:
+        if mode['workspace']!=workspace:raise ValueError('Encryption identity changed')
+        return
+    if (directory/'workspace.sqlite3').exists():
+        raise ValueError('Existing relay requires an explicit encryption cutover')
+    path=directory/'e2ee-mode.json'
+    fd=os.open(path,os.O_CREAT|os.O_EXCL|os.O_WRONLY|os.O_NOFOLLOW,0o600)
+    with os.fdopen(fd,'w') as output:
+        json.dump({'v':1,'workspace':workspace},output);output.flush();os.fsync(output.fileno())
+
+
 def main():
     config=json.loads(Path(sys.argv[1]).read_text())
     config.pop('secret_id',None)
     config.pop('TELEGRAM_BOT_TOKEN',None)
-    install_pin(Path('/var/lib/codex-workspace'),config.pop('auth_pin'))
+    pin=config.pop('auth_pin')
+    install_pin(Path('/var/lib/codex-workspace'),pin)
+    install_mode(Path('/var/lib/codex-workspace'),pin['workspace'])
     path=Path('/etc/codex-workspace/config.json')
     path.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
     fd=os.open(path,os.O_CREAT|os.O_TRUNC|os.O_WRONLY,0o600)

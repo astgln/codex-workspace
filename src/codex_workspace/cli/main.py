@@ -4,6 +4,7 @@ import runpy
 import sys
 
 COMMANDS = {
+    ('setup',): 'ops.setup',
     ('agent','run'): 'agent.cli_worker',
     ('history','watch'): 'agent.history_watch',
     ('history','sync'): 'agent.history_watch',

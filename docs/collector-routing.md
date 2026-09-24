@@ -19,11 +19,12 @@ codex-workspace service install --codex /absolute/path/to/codex --catalog /absol
 
 Установщик отказывается перезаписывать существующую службу. Настройку
 `.local/web.json` и файл клиентского ключа не выводите в терминал или отчёты.
-Для службы истории используйте отдельный пользовательский launchd job с
+Для службы истории установите отдельный пользовательский launchd job с
 абсолютными путями, приватными логами и перезапуском при ошибке:
 
 ```sh
-codex-workspace history watch --catalog /absolute/path/to/catalog.json
+codex-workspace service install --kind history --codex /absolute/path/to/codex \
+  --catalog /absolute/path/to/catalog.json
 ```
 
 Службы перечитывают каталог и настройку на каждом проходе; `paused` прекращает

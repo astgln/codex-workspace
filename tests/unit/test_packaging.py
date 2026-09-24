@@ -33,10 +33,10 @@ class PackagingTests(unittest.TestCase):
     def test_release_excludes_credentials_tests_and_generated_python(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)
-            for name in ('pyproject.toml','src/codex_workspace/__init__.py','src/codex_workspace/relay/app.py','src/codex_workspace/secret.env','src/codex_workspace/cache.pyc','ops/server/install.sh','ops/server/codex-workspace.service','ops/server/settings.json','tests/test_x.py','.local/secret','web/dist/index.html'):
+            for name in ('README.md','LICENSE','web/licenses/codex-webui-MIT.txt','pyproject.toml','src/codex_workspace/__init__.py','src/codex_workspace/relay/app.py','src/codex_workspace/secret.env','src/codex_workspace/cache.pyc','ops/server/install.sh','ops/server/codex-workspace.service','ops/server/settings.json','tests/test_x.py','.local/secret','web/dist/index.html'):
                 path=root/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text('fixture')
             files=release_files(root)
-            self.assertEqual(set(files),{'pyproject.toml','src/codex_workspace/__init__.py','src/codex_workspace/relay/app.py','ops/server/install.sh','ops/server/codex-workspace.service','static/index.html','static/files.json'})
+            self.assertEqual(set(files),{'README.md','LICENSE','web/licenses/codex-webui-MIT.txt','pyproject.toml','src/codex_workspace/__init__.py','src/codex_workspace/relay/app.py','ops/server/install.sh','ops/server/codex-workspace.service','static/index.html','static/files.json'})
 
     def test_one_shot_history_uses_the_same_transport_as_the_service(self):
         from codex_workspace.cli.main import main

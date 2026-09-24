@@ -1,0 +1,17 @@
+openapi: 3.0.0
+info:
+  title: Codex Workspace setup
+  version: '1'
+paths:
+  /:
+    get:
+      responses:
+        '200':
+          description: Setup pending
+      x-yc-apigateway-integration:
+        type: dummy
+        http_code: 200
+        http_headers:
+          Content-Type: text/plain
+        content:
+          "*": Setup pending

@@ -12,6 +12,13 @@ jobs:
           python-version: '3.12'
       - run: pip install -e ".[agent,relay,dev]"
       - run: CODEX_WORKSPACE_SOURCE="$PWD" python -m unittest discover -s tests -t . -v
+      - name: Install wheel and exercise fresh setup outside checkout
+        run: |
+          python -m build --wheel
+          pip install --force-reinstall --no-deps dist/*.whl
+          cp tests/integration/test_fresh_install.py "$RUNNER_TEMP/test_fresh_install.py"
+          cd "$RUNNER_TEMP"
+          python -m unittest test_fresh_install -q
   web:
     runs-on: ubuntu-latest
     steps:

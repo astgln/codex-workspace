@@ -18,6 +18,7 @@
 историю. Выполнение использует `codex exec resume` в исходной задаче с её правами.
 Входящие соединения к компьютеру и управляющий чат не требуются.
 
+- [Установка с нуля](docs/installation.md)
 - [Архитектура и поток данных](docs/architecture.md)
 - [Развёртывание и обновление](docs/deployment.md)
 - [Локальные службы и восстановление](docs/collector-routing.md)
@@ -38,3 +39,6 @@ cd web && npx playwright install chromium && npx playwright test
 Лицензия исходных компонентов сохранена в [web/licenses/codex-webui-MIT.txt](web/licenses/codex-webui-MIT.txt).
 
 Вход и привязка устройств описаны в [руководстве авторизации](docs/device-login.md).
+
+Собственный код распространяется по [MIT](LICENSE). Сообщения об уязвимостях —
+по [SECURITY.md](SECURITY.md). Проверки перед публикацией — [public release](docs/public-release.md).

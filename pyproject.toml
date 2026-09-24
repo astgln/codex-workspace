@@ -6,6 +6,9 @@ build-backend = "setuptools.build_meta"
 name = "codex-workspace"
 version = "0.2.0"
 description = "Encrypted web workspace and outbound collectors for Codex"
+license = "MIT"
+license-files = ["LICENSE", "web/licenses/*.txt"]
+readme = "README.md"
 requires-python = ">=3.12"
 dependencies = []
 

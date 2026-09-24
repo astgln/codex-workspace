@@ -41,7 +41,8 @@ def verify_pinned_host_key(path, host):
 def release_files(root):
     """Explicit source/resource allowlist; never package local state or tests."""
     files={}
-    files['pyproject.toml']=(root/'pyproject.toml').read_bytes()
+    for name in ('pyproject.toml','README.md','LICENSE','web/licenses/codex-webui-MIT.txt'):
+        files[name]=(root/name).read_bytes()
     for directory,extensions in (('src/codex_workspace',{'.py'}),('ops/server',{'.sh','.service'})):
         for path in sorted((root/directory).rglob('*')):
             if path.is_file() and path.suffix in extensions:
