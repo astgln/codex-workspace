@@ -1,6 +1,6 @@
 /** Shared presentation contract for transport and execution states. */
 export const requestStatuses={
- awaiting_approval:{label:'Ожидает одобрения',activity:'Ожидаем одобрения…'},
+ awaiting_approval:{label:'Ожидает одобрения',activity:'Ожидаю одобрения…'},
  approved:{label:'Ожидает Codex',activity:'В очереди Codex…'},
  queued:{label:'Ожидает Codex',activity:'В очереди Codex…'},
  delivered:{label:'Передано в Codex',activity:'Ожидаю ответа Codex…'},
