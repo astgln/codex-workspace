@@ -10,8 +10,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install -r server/requirements.txt -r crypto-requirements.txt httpx
-      - run: python -m unittest discover -v
+      - run: pip install -e ".[agent,relay,dev]"
+      - run: CODEX_WORKSPACE_SOURCE="$PWD" python -m unittest discover -s tests -t . -v
   web:
     runs-on: ubuntu-latest
     steps:
@@ -24,7 +24,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install -r crypto-requirements.txt
+      - run: pip install -e ".[agent]"
       - run: npm ci --prefix web --ignore-scripts
       - run: npm --prefix web run build
       - run: cd web && npx playwright install --with-deps chromium webkit && npx playwright test

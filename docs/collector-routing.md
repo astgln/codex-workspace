@@ -14,7 +14,7 @@
 Служба запросов устанавливается одной командой:
 
 ```sh
-python3 install_cli_service.py --codex /absolute/path/to/codex --catalog /absolute/path/to/catalog.json
+codex-workspace service install --codex /absolute/path/to/codex --catalog /absolute/path/to/catalog.json
 ```
 
 Установщик отказывается перезаписывать существующую службу. Настройку
@@ -23,7 +23,7 @@ python3 install_cli_service.py --codex /absolute/path/to/codex --catalog /absolu
 абсолютными путями, приватными логами и перезапуском при ошибке:
 
 ```sh
-python3 history_watch.py --catalog /absolute/path/to/catalog.json
+codex-workspace history watch --catalog /absolute/path/to/catalog.json
 ```
 
 Службы перечитывают каталог и настройку на каждом проходе; `paused` прекращает
@@ -92,7 +92,7 @@ python3 history_watch.py --catalog /absolute/path/to/catalog.json
 `history_sync.py` используется постоянной службой и разовой командой:
 
 ```sh
-python3 history_client.py sync --catalog /absolute/path/to/catalog.json
+codex-workspace history sync --catalog /absolute/path/to/catalog.json
 ```
 
 Разовая команда возвращает количество сообщений, неуспешных задач и список

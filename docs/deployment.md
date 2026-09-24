@@ -5,6 +5,18 @@
 `main` — отдельная однопользовательская сборка со schema 4; не публикуйте её
 поверх экспериментальной установки без отдельного решения о переходе.
 
+## Установка пакета и пути
+
+Установите пакет: `python -m pip install ".[agent,relay]"` (на relay достаточно
+`.[relay]`, на ноутбуке — `.[agent]`). Для разработки используется `-e`.
+Команды `codex-workspace` работают независимо от текущего каталога.
+
+Существующей установке явно задайте `CODEX_WORKSPACE_STATE` с прежним каталогом
+`.local`; не переносите базы и ключи при обновлении исходников. При отсутствии
+переменной новая установка использует `~/.local/state/codex-workspace`.
+Для команд релиза дополнительно задайте `CODEX_WORKSPACE_SOURCE` — checkout,
+из которого собирается релиз. `--state` службы имеет приоритет для её очереди.
+
 ## Сервер
 
 Нужны VM Ubuntu, сервисный аккаунт с доступом только к нужному Lockbox secret,
@@ -19,11 +31,11 @@ SSH ограничивается проверенным администрати
 Существующие ресурсы импортируйте по проверенным ID; не угадывайте VM по SSH alias.
 
 ```sh
-python3 deploy_vm.py --folder FOLDER_ID --project CATALOG_ID \
+codex-workspace provision --folder FOLDER_ID --project CATALOG_ID \
   --owner TELEGRAM_USERNAME --ssh-source ADMIN_IPV4
 npm ci --prefix web --ignore-scripts
 npm --prefix web run build
-python3 release_vm.py publish
+codex-workspace deploy publish
 ```
 
 `deploy_vm.py` требует заранее заданного `secret` в deployment.json. Это
@@ -37,7 +49,7 @@ SSH host key берётся из аутентифицированного Comput
 затем переключает `/opt/codex-workspace/current` и перезапускает `codex-workspace`.
 Проверка `/health` по SSH подтверждает доступность процесса, а не вход пользователя.
 
-Для нового Gateway выполните `python3 release_vm.py cutover` после проверки VM.
+Для нового Gateway выполните `codex-workspace deploy cutover` после проверки VM.
 В BotFather зарегистрируйте точный HTTPS origin для Telegram Login. Корневой URL
 сайта работает без специальных query-параметров. Серверу передаются
 `OWNER_USERNAME`, `TELEGRAM_BOT_TOKEN`, `CLIENT_KEY_HASH`, `PROJECT_ID`,
@@ -51,10 +63,10 @@ SSH host key берётся из аутентифицированного Comput
 Сохраните конфигурацию приватно; не копируйте её в сообщения или отчёты.
 
 ```sh
-python3 web_client.py catalog /absolute/path/to/catalog.json
-python3 install_cli_service.py --codex /absolute/path/to/codex \
+codex-workspace client catalog /absolute/path/to/catalog.json
+codex-workspace service install --codex /absolute/path/to/codex \
   --catalog /absolute/path/to/catalog.json
-python3 history_watch.py --catalog /absolute/path/to/catalog.json
+codex-workspace history watch --catalog /absolute/path/to/catalog.json
 ```
 
 История должна работать отдельной пользовательской службой с закрытыми логами.

@@ -1,0 +1,30 @@
+[Unit]
+Description=Codex Workspace web application
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=codex-workspace
+Group=codex-workspace
+WorkingDirectory=/opt/codex-workspace/current
+Environment=WORKSPACE_CONFIG=/etc/codex-workspace/config.json
+Environment=WORKSPACE_STATIC=/opt/codex-workspace/current/static
+Environment=WORKSPACE_DATA=/var/lib/codex-workspace
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/codex-workspace/venv/bin/uvicorn codex_workspace.relay.app:app --host 0.0.0.0 --port 8080 --workers 1 --no-access-log --log-level warning
+Restart=on-failure
+RestartSec=5
+UMask=0077
+StateDirectory=codex-workspace
+StateDirectoryMode=0700
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/codex-workspace
+CapabilityBoundingSet=
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

@@ -3,11 +3,9 @@ import json
 from pathlib import Path
 import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
-from workspace_crypto import (Context, create_recovery_code, decode, encode,
-                              open_envelope, public_bytes, recovery_key, seal)
+from codex_workspace.crypto.workspace_crypto import Context, create_recovery_code, decode, encode, open_envelope, public_bytes, recovery_key, seal
 
 if sys.argv[1] == 'generate':
     private = ec.generate_private_key(ec.SECP256R1())

@@ -4,9 +4,8 @@ from pathlib import Path
 import sys
 import tempfile
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from key_vault import KeyVault
-from workspace_crypto import create_recovery_code, decode, encode, public_bytes
+from codex_workspace.devices.key_vault import KeyVault
+from codex_workspace.crypto.workspace_crypto import create_recovery_code, decode, encode, public_bytes
 
 value = json.load(sys.stdin)
 with tempfile.TemporaryDirectory() as directory:

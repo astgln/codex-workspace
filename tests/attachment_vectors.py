@@ -4,10 +4,9 @@ import json
 from pathlib import Path
 import sys
 
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from key_material import public_key
-from request_intent import validate_attachment
-from workspace_crypto import Context, decode, open_envelope
+from codex_workspace.crypto.key_material import public_key
+from codex_workspace.agent.request_intent import validate_attachment
+from codex_workspace.crypto.workspace_crypto import Context, decode, open_envelope
 
 value=json.load(sys.stdin)
 manifest=value['manifest'];validate_attachment(manifest)

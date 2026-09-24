@@ -223,8 +223,8 @@ API закрыты mode pin. Наличие шифрованного канал�
 
 ```
 python3 -m venv .local/crypto-venv
-.local/crypto-venv/bin/python -m pip install -r crypto-requirements.txt
-.local/crypto-venv/bin/python -m unittest discover
+.local/crypto-venv/bin/python -m pip install -e ".[agent,relay,dev]"
+CODEX_WORKSPACE_SOURCE="$PWD" .local/crypto-venv/bin/python -m unittest discover -s tests -t .
 cd web
 npx playwright test tests/crypto.spec.ts tests/pairing.spec.ts tests/vault.spec.ts tests/encrypted-attachments.spec.ts tests/pairing-screen.spec.ts
 npx playwright test --browser webkit tests/crypto.spec.ts tests/pairing.spec.ts tests/vault.spec.ts tests/encrypted-attachments.spec.ts tests/pairing-screen.spec.ts
@@ -298,7 +298,7 @@ npx playwright test --browser webkit tests/crypto.spec.ts tests/pairing.spec.ts 
 ### Новый запуск без переноса веб-данных
 
 При явном отказе от старой веб-переписки остановите сборщики и сервер, затем
-запустите `python -m server.fresh_encryption --directory DATA --workspace ID
+запустите `python -m codex_workspace.relay.fresh_encryption --directory DATA --workspace ID
 --discard-old-web-content` из установленного релиза. Команда сначала закрепляет
 E2EE, очищает старые запросы/историю/превью, старые загрузки и `migration-backups`,
 очищает свободные страницы SQLite. Авторизация сохраняется; ключи устройств

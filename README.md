@@ -27,8 +27,8 @@ Telegram-аккаунт; сообщения сразу поступают в о�
 
 ```sh
 python3 -m venv .venv
-.venv/bin/pip install -r server/requirements.txt httpx
-.venv/bin/python -m unittest discover -q
+.venv/bin/pip install -e ".[agent,relay,dev]"
+CODEX_WORKSPACE_SOURCE="$PWD" .venv/bin/python -m unittest discover -s tests -t . -q
 npm ci --prefix web --ignore-scripts
 npm --prefix web run build
 cd web && npx playwright install chromium && npx playwright test

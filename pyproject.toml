@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codex-workspace"
+version = "0.2.0"
+description = "Encrypted web workspace and outbound collectors for Codex"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.optional-dependencies]
+agent = ["cryptography==50.0.1", "websockets==15.0.1"]
+relay = ["fastapi==0.135.1", "uvicorn==0.41.0", "PyJWT[crypto]==2.14.0", "pywebpush==2.5.0"]
+dev = ["httpx", "build"]
+
+[project.scripts]
+codex-workspace = "codex_workspace.cli.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

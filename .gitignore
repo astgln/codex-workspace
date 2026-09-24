@@ -17,3 +17,7 @@ web/test-results/
 web/playwright-report/
 
 /worktrees/
+
+*.egg-info/
+/build/
+/dist/
