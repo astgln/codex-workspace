@@ -37,3 +37,10 @@ class PackagingTests(unittest.TestCase):
                 path=root/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text('fixture')
             files=release_files(root)
             self.assertEqual(set(files),{'pyproject.toml','src/codex_workspace/__init__.py','src/codex_workspace/relay/app.py','ops/server/install.sh','ops/server/codex-workspace.service','static/index.html','static/files.json'})
+
+    def test_one_shot_history_uses_the_same_transport_as_the_service(self):
+        from codex_workspace.cli.main import main
+        with patch('sys.argv',['codex-workspace','history','sync','--catalog','/catalog']), patch('runpy.run_module') as run:
+            self.assertEqual(main(),0)
+            run.assert_called_once_with('codex_workspace.agent.history_watch',run_name='__main__')
+            self.assertEqual(sys.argv[1:],['--once','--catalog','/catalog'])

@@ -21,4 +21,3 @@ export async function createDeviceInvitation(onProgress?:(seconds:number)=>void)
  await stored('outbox',storageId,{...entry,expires:0});check(s);
  return {link:location.origin+'/#pair='+encode(new TextEncoder().encode(JSON.stringify(invitation))),expires:invitation.expires};
 }
-

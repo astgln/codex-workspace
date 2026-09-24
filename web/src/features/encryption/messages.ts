@@ -40,4 +40,3 @@ export async function encryptedDownload(file:{id:string;name:string;size:number;
  if(!entry||entry.manifest.name!==file.name||entry.manifest.size!==file.size||entry.manifest.sha256!==file.sha256)throw new Error('Нет проверенного описания вложения. Обновите задачу.');
  return downloadEncryptedAttachment(s.workspace,entry.scope,entry.manifest,entry.signer,s.device.bundle!,()=>check(s));
 }
-

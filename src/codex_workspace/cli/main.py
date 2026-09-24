@@ -6,7 +6,7 @@ import sys
 COMMANDS = {
     ('agent','run'): 'agent.cli_worker',
     ('history','watch'): 'agent.history_watch',
-    ('history','sync'): 'agent.history_client',
+    ('history','sync'): 'agent.history_watch',
     ('devices',): 'devices.e2ee_admin',
     ('service','install'): 'ops.install_cli_service',
     ('deploy',): 'ops.release_vm',
@@ -20,7 +20,7 @@ def main():
     for prefix,module in COMMANDS.items():
         if tuple(args[:len(prefix)])==prefix:
             rest=args[len(prefix):]
-            if prefix==('history','sync'):rest=['sync',*rest]
+            if prefix==('history','sync'):rest=['--once',*rest]
             sys.argv=['codex-workspace '+' '.join(prefix),*rest]
             runpy.run_module('codex_workspace.'+module,run_name='__main__')
             return 0

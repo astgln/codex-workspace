@@ -17,4 +17,3 @@ export async function assembleResponse(value:unknown,records:Map<string,{revisio
  if(offset!==bytes.length||await hash(bytes)!==manifest.sha256)throw new Error('Ответ загружен не полностью.');
  return decodeObject(bytes);
 }
-
