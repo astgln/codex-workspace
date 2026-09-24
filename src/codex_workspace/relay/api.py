@@ -24,43 +24,6 @@ def authorized(event):
     return secrets.compare_digest(hashlib.sha256(supplied[7:].encode()).hexdigest(), os.environ['CLIENT_KEY_HASH'])
 
 
-def api(event, context=None, *, mutate):
-    try:
-        path = event.get('path', '')
-        method = event.get('httpMethod')
-        if path == '/health' and method == 'GET':
-            return response(200, {'status': 'ok', 'mode': 'single-user'})
-        if not authorized(event):
-            return response(401, {'error': 'unauthorized'})
-        body = decode(event)
-        now = int(time.time())
-        if method != 'POST':
-            return response(405, {'error': 'method'})
-        if path == '/v2/worker/status':
-            from codex_workspace.domain.worker_status import save
-            return response(200, mutate(lambda s: save(s, body, now)))
-        if path == '/v2/catalog':
-            return response(200, mutate(lambda s: workspace.sync_catalog(s, body, os.environ['PROJECT_ID'], now)))
-        if path == '/v2/inbox/claim':
-            return response(200, {'message': mutate(lambda s: workspace.collect(s, now, os.environ['OWNER_USERNAME']))})
-        if path == '/v2/inbox/validate':
-            return response(200, mutate(lambda s: workspace.dispatch_allowed(s, body, now, os.environ['OWNER_USERNAME'])))
-        if path == '/v2/inbox/ack':
-            mutate(lambda s: domain.receipt(s, body, now))
-            return response(200, {'status': 'delivered'})
-        if path == '/v2/responses':
-            return response(200, mutate(lambda s: workspace.publish(s, body, now)))
-        return response(404, {'error': 'not_found'})
-    except workspace.Forbidden:
-        return response(403, {'error': 'access_denied'})
-    except domain.Rejected:
-        return response(409, {'error': 'conflict'})
-    except (ValueError, TypeError, KeyError):
-        return response(400, {'error': 'invalid_request'})
-    except Exception:
-        return response(503, {'error': 'temporarily_unavailable'})
-
-
 def decode(event):
     body = event.get('body') or '{}'
     if len(body) > 100000:
@@ -104,18 +67,7 @@ def web_api(event, context=None, *, mutate):
                 return workspace.bind_user(state, user, owner)
             uid = mutate(authenticate)
             return response(200, {'token': workspace.issue_session(uid, secret, now), 'expires_in': workspace.SESSION_TTL})
-        headers = {k.lower(): v for k, v in event.get('headers', {}).items()}
-        authorization = headers.get('authorization', '')
-        if not authorization.startswith('Workspace '):
-            raise workspace.Unauthorized()
-        uid = workspace.verify_session(authorization[10:], secret, now)
-        routes = {
-            '/web/state': lambda s: workspace.view(s, uid, owner, now),
-            '/web/messages': lambda s: workspace.submit(s, uid, owner, body, now),
-        }
-        if path not in routes:
-            return response(404, {'error': 'not_found'})
-        return response(200, mutate(routes[path]))
+        return response(404, {'error': 'not_found'})
     except workspace.Unauthorized:
         return response(401, {'error': 'telegram_login_required'})
     except workspace.Forbidden:

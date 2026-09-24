@@ -28,13 +28,10 @@ class WorkerHealthTests(unittest.TestCase):
 
 
 class WorkerHealthAPITests(ServerTests):
-    def test_collector_only_write_and_owner_only_read(self):
+    def test_plaintext_worker_health_is_unavailable(self):
         result=summary({'status':'waiting_for_tasks','requests':[{'reason':'desktop_writer_lock'}]})
-        self.assertEqual(self.client.post('/v2/worker/status',json=result).status_code,401)
         headers={'Authorization':'Bearer collector-test-key'}
-        self.assertEqual(self.client.post('/v2/worker/status',json={**result,'text':'secret'},headers=headers).status_code,400)
-        self.assertEqual(self.client.post('/v2/worker/status',json=result,headers=headers).status_code,200)
+        self.assertEqual(self.client.post('/v2/worker/status',json=result,headers=headers).status_code,409)
         _,csrf=self.browser_session()
-        response=self.client.post('/web/diagnostics',json={},headers={'X-CSRF-Token':csrf})
-        self.assertEqual(response.json()['worker']['waiting']['desktop_writer_lock'],1)
+        self.assertEqual(self.client.post('/web/diagnostics',json={},headers={'X-CSRF-Token':csrf}).status_code,409)
         self.assertNotIn('worker_status',self.client.get('/auth/session').json()['workspace'])

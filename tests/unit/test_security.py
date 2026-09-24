@@ -21,7 +21,7 @@ class SecurityAPITests(ServerTests):
     def test_collector_cannot_replace_telegram_keys(self):
         result = self.client.post('/v2/login-keys', json={'keys': [], 'fetched_at': 1},
                                   headers={'Authorization': 'Bearer collector-test-key'})
-        self.assertEqual(result.status_code, 404)
+        self.assertEqual(result.status_code, 409)
         state = Store(self.temp.name).mutate(lambda s: s.copy())
         self.assertNotIn('login_jwks', state)
         self.assertNotIn('telegram_jwks_v2', state)

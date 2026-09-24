@@ -12,7 +12,7 @@ from starlette.concurrency import run_in_threadpool
 from codex_workspace.domain import login, workspace, domain
 from . import api
 from .store import Store
-from . import files, history, sessions, push, diagnostics, encryption_mode
+from . import files, sessions, push, encryption_mode
 from .http_security import LoginBudget, secure_headers
 
 store = None
@@ -35,9 +35,7 @@ async def deliver_push(stop):
     while not stop.is_set():
         try:
             mode=encryption_mode.read(store)
-            if mode is None:
-                await run_in_threadpool(push.tick,store,os.environ['OWNER_USERNAME'])
-            else:
+            if mode is not None:
                 from . import encrypted_push
                 await run_in_threadpool(encrypted_push.tick,store,os.environ['OWNER_USERNAME'],mode)
         except Exception:pass  # Never log subscription endpoints or keys.
@@ -101,14 +99,14 @@ async def handle(request: Request, path: str):
         mode=encryption_mode.read(store)
     except (OSError,ValueError):
         return Response('{"error":"encryption_mode_unavailable"}',status_code=503,media_type='application/json')
-    if mode is not None and not encryption_mode.permitted(path):
+    if not encryption_mode.permitted(path):
         return Response('{"error":"encrypted_channel_required"}',status_code=409,media_type='application/json')
     try:
         if path=='auth/session':
             if request.method!='GET':return Response(status_code=405)
             uid,csrf=sessions.verify(store,request.cookies.get(sessions.COOKIE))
             if mode is None:
-                view=await run_in_threadpool(store.mutate,lambda state:workspace.view(state,uid,os.environ['OWNER_USERNAME'],int(time.time())))
+                return Response('{"error":"encryption_not_initialized"}',status_code=503,media_type='application/json')
             else:
                 owner=await run_in_threadpool(store.mutate,lambda state:workspace.is_owner(state,uid,os.environ['OWNER_USERNAME']))
                 view={'user':{'id':uid},'encryption':mode,
@@ -197,13 +195,7 @@ async def handle(request: Request, path: str):
         except opaque.Conflict:result=api.response(409,{'error':'encrypted_conflict'})
         except (ValueError,TypeError,RecursionError):result=api.response(400,{'error':'invalid_encrypted_record'})
         except Exception:result=api.response(503,{'error':'temporarily_unavailable'})
-    elif path == 'web/diagnostics':
-        if request.method != 'POST':return Response(status_code=405)
-        try:
-            value=await run_in_threadpool(diagnostics.inspect,store,uid,os.environ['OWNER_USERNAME'])
-            result=api.response(200,value)
-        except workspace.Forbidden:result=api.response(403,{'error':'access_denied'})
-    elif path.startswith(('web/push/','web/e2ee/push/')):
+    elif path.startswith('web/e2ee/push/'):
         try:
             if request.method!='POST':return Response(status_code=405)
             data=json.loads(body)
@@ -212,70 +204,15 @@ async def handle(request: Request, path: str):
             result=api.response(200,value)
         except workspace.Forbidden:result=api.response(403,{'error':'access_denied'})
         except (ValueError,TypeError,domain.Rejected):result=api.response(400,{'error':'invalid_push'})
-    elif path == 'v2/usage':
-        from codex_workspace.domain.quota import valid
-        if request.method != 'POST':return Response(status_code=405)
-        if not api.authorized(event):return Response(status_code=401)
-        try:
-            data=json.loads(body)
-            if not valid(data) or data['observed_at'] > time.time()+60:raise ValueError()
-            def save_usage(state):
-                if data['observed_at'] >= state.get('weekly_quota', {}).get('observed_at', 0):
-                    state['weekly_quota']=data
-                return {'ok':True}
-            value=await run_in_threadpool(store.mutate,save_usage)
-            result=api.response(200,value)
-        except (ValueError,TypeError):result=api.response(400,{'error':'invalid_request'})
-    elif path in ('web/history','v2/history/pending','v2/history/publish'):
-        try:
-            if request.method!='POST':return Response(status_code=405)
-            data=json.loads(body)
-            if not isinstance(data,dict):raise ValueError()
-            collector=path.startswith('v2/')
-            if collector:
-                if not api.authorized(event):raise workspace.Unauthorized()
-                uid=None
-            else:
-                authorization=event['headers'].get('authorization','')
-                if not authorization.startswith('Workspace '):raise workspace.Unauthorized()
-                uid=workspace.verify_session(authorization[10:],os.environ['TELEGRAM_BOT_TOKEN'],int(time.time()))
-            value=await run_in_threadpool(history.handle,store,uid,os.environ['OWNER_USERNAME'],'read' if not collector else path.rsplit('/',1)[1],data,collector)
-            result=api.response(200,value)
-        except workspace.Unauthorized:result=api.response(401,{'error':'login_required'})
-        except workspace.Forbidden:result=api.response(403,{'error':'access_denied'})
-        except domain.Rejected:result=api.response(409,{'error':'history_conflict'})
-        except (ValueError,TypeError):result=api.response(400,{'error':'invalid_request'})
-        except Exception:result=api.response(503,{'error':'temporarily_unavailable'})
-    elif path.startswith('web/uploads/') or path == 'v2/files/get':
-        try:
-            if request.method!='POST':
-                return Response(status_code=405)
-            data=json.loads(body)
-            if not isinstance(data,dict):raise ValueError()
-            collector=path=='v2/files/get'
-            if collector:
-                if not api.authorized(event):raise workspace.Unauthorized()
-                uid=None
-            else:
-                authorization=event['headers'].get('authorization','')
-                if not authorization.startswith('Workspace '):raise workspace.Unauthorized()
-                uid=workspace.verify_session(authorization[10:],os.environ['TELEGRAM_BOT_TOKEN'],int(time.time()))
-            value=await run_in_threadpool(files.handle,store,uid,os.environ['OWNER_USERNAME'],path.rsplit('/',1)[1],data,collector)
-            result=api.response(200,value)
-        except workspace.Unauthorized:result=api.response(401,{'error':'login_required'})
-        except workspace.Forbidden:result=api.response(403,{'error':'access_denied'})
-        except domain.Rejected:result=api.response(409,{'error':'upload_conflict'})
-        except (ValueError,TypeError):result=api.response(400,{'error':'invalid_request'})
-        except Exception:result=api.response(503,{'error':'temporarily_unavailable'})
-    elif path.startswith('web/'):
+    elif path in ('web/login/config','web/login/session'):
         result = await run_in_threadpool(api.web_api,event,None,mutate=store.mutate)
         if path=='web/login/session' and result['statusCode']==200:
             signed=json.loads(result['body'])['token']
             uid=workspace.verify_session(signed,os.environ['TELEGRAM_BOT_TOKEN'],int(time.time()))
             cookie,_=await run_in_threadpool(sessions.issue,store,uid)
             result=api.response(200,{'ok':True})
-    elif path.startswith('v2/'):
-        result = await run_in_threadpool(api.api,event,None,mutate=store.mutate)
+    elif path.startswith(('web/','v2/','auth/')):
+        result = api.response(404,{'error':'not_found'})
     else:
         result = await run_in_threadpool(api.website,event,None)
     payload = base64.b64decode(result['body']) if result.get('isBase64Encoded') else result['body']

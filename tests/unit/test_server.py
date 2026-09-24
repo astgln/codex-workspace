@@ -1,3 +1,5 @@
+import base64
+from pathlib import Path
 import hashlib
 import hmac
 import time
@@ -15,6 +17,8 @@ from codex_workspace.relay import sessions
 class ServerTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory()
+        mode=Path(self.temp.name)/'e2ee-mode.json'
+        mode.write_text(json.dumps({'v':1,'workspace':base64.urlsafe_b64encode(b'w'*32).decode().rstrip('=')}));mode.chmod(0o600)
         self.env=patch.dict('os.environ',{'WORKSPACE_CONFIG':'','WORKSPACE_DATA':self.temp.name,
             'TELEGRAM_BOT_TOKEN':'123:test-only','OWNER_USERNAME':'owner',
             'CLIENT_KEY_HASH':hashlib.sha256(b'collector-test-key').hexdigest(),'PROJECT_ID':'project-example','PUBLIC_ORIGIN':'https://workspace.test'})
@@ -70,42 +74,33 @@ class ServerTests(unittest.TestCase):
 
     def test_health_and_auth_separation(self):
         self.assertEqual(self.client.get('/health').json()['mode'],'standalone-web')
-        self.assertEqual(self.client.post('/web/state',json={}).status_code,401)
-        self.assertEqual(self.client.post('/v2/inbox/claim',json={}).status_code,401)
-        self.assertEqual(self.client.post('/web/state',json={},headers={'Authorization':'Bearer collector-test-key'}).status_code,401)
         self.assertEqual(self.client.get('/web/login/config').status_code,200)
-        self.assertEqual(self.client.post('/v2/inbox/validate',json={}).status_code,401)
+        self.assertEqual(self.client.post('/web/e2ee/read',json={}).status_code,401)
+        self.assertEqual(self.client.post('/v2/e2ee/read',json={}).status_code,401)
+        self.assertEqual(self.client.post('/web/state',json={}).status_code,409)
         self.browser_session()
-        self.assertEqual(self.client.post('/v2/inbox/validate',json={}).status_code,401)
-        result=self.client.post('/v2/inbox/validate',json={'id':-999},headers={'Authorization':'Bearer collector-test-key'})
-        self.assertEqual(result.status_code,200)
-        self.assertEqual(result.json(),{'allowed':False})
+        self.assertEqual(self.client.post('/v2/e2ee/read',json={}).status_code,401)
 
-    def test_diagnostics_requires_owner_cookie_and_csrf(self):
-        self.assertEqual(self.client.post('/web/diagnostics',json={}).status_code,401)
+
+    def test_plaintext_diagnostics_are_unavailable_even_to_owner(self):
         _,csrf=self.browser_session()
-        self.assertEqual(self.client.post('/web/diagnostics',json={}).status_code,403)
-        result=self.client.post('/web/diagnostics',json={},headers={'X-CSRF-Token':csrf})
-        self.assertEqual(result.status_code,200)
-        self.assertIn('notifications',result.json())
-        Store(self.temp.name).mutate(lambda s:s['bindings'].update(owner=99,friend=42))
-        self.assertEqual(self.client.post('/web/diagnostics',json={},headers={'X-CSRF-Token':csrf}).status_code,403)
+        self.assertEqual(self.client.post('/web/diagnostics',json={},headers={'X-CSRF-Token':csrf}).status_code,409)
+
 
     def test_push_config_requires_session_and_csrf(self):
-        self.assertEqual(self.client.post('/web/push/config',json={}).status_code,401)
+        self.assertEqual(self.client.post('/web/e2ee/push/config',json={}).status_code,401)
         token,csrf=self.browser_session()
-        self.assertEqual(self.client.post('/web/push/config',json={}).status_code,403)
-        result=self.client.post('/web/push/config',json={},headers={'X-CSRF-Token':csrf})
+        self.assertEqual(self.client.post('/web/e2ee/push/config',json={}).status_code,403)
+        result=self.client.post('/web/e2ee/push/config',json={},headers={'X-CSRF-Token':csrf})
         self.assertEqual(result.status_code,200)
         self.assertEqual(set(result.json()),{'public_key'})
 
-    def test_catalog_is_project_scoped(self):
+    def test_plaintext_collector_cannot_publish_catalog(self):
         headers={'Authorization':'Bearer collector-test-key'}
-        body={'project_id':'project-example','threads':[{'id':'thread-launcher','title':'Launcher','project_id':'project-example'}]}
-        self.assertEqual(self.client.post('/v2/catalog',json=body,headers=headers).status_code,200)
-        self.assertEqual(self.client.post('/v2/catalog',json={**body,'project_id':'other'},headers=headers).status_code,403)
-        result=self.client.post('/v2/inbox/claim',json={},headers=headers)
-        self.assertEqual(result.json(),{'message':None})
+        body={'project_id':'project-example','threads':[]}
+        self.assertEqual(self.client.post('/v2/catalog',json=body,headers=headers).status_code,409)
+        self.assertEqual(self.client.post('/v2/inbox/claim',json={},headers=headers).status_code,409)
+
 
     def test_widget_login_verified_bound_and_replay_rejected(self):
         data={'id':42,'first_name':'Owner','username':'owner','auth_date':int(time.time())}
@@ -121,8 +116,8 @@ class ServerTests(unittest.TestCase):
         self.assertNotIn('Domain=',cookie)
         self.assertNotIn('token',result.json())
         csrf=self.client.get('/auth/session').json()['csrf']
-        view=self.client.post('/web/state',json={},headers={'X-CSRF-Token':csrf})
-        self.assertEqual(view.json()['user'],{'id':42})
+        view=self.client.get('/auth/session')
+        self.assertEqual(view.json()['workspace']['user'],{'id':42})
         fresh=self.client.get('/web/login/config').json()['challenge']
         self.assertEqual(self.client.post('/web/login/session',json={**body,'challenge':fresh}).status_code,401)
         self.assertEqual(self.client.post('/web/login/session',json={**body,'id_token':'ambiguous'}).status_code,401)
@@ -143,9 +138,9 @@ class ServerTests(unittest.TestCase):
     def test_cookie_session_csrf_origin_and_logout_revocation(self):
         token,csrf=self.browser_session()
         self.assertEqual(self.client.get('/auth/session').json()['workspace']['user']['id'],42)
-        self.assertEqual(self.client.post('/web/state',json={}).status_code,403)
-        self.assertEqual(self.client.post('/web/state',json={},headers={'X-CSRF-Token':csrf,'Origin':'https://evil.test'}).status_code,403)
-        self.assertEqual(self.client.post('/web/state',json={},headers={'X-CSRF-Token':csrf}).status_code,200)
+        self.assertEqual(self.client.post('/web/e2ee/push/config',json={}).status_code,403)
+        self.assertEqual(self.client.post('/web/e2ee/push/config',json={},headers={'X-CSRF-Token':csrf,'Origin':'https://evil.test'}).status_code,403)
+        self.assertEqual(self.client.post('/web/e2ee/push/config',json={},headers={'X-CSRF-Token':csrf}).status_code,200)
         self.assertEqual(self.client.post('/auth/logout',json={},headers={'X-CSRF-Token':csrf}).status_code,200)
         self.client.cookies.set(sessions.COOKIE,token,domain='workspace.test',path='/')
         self.assertEqual(self.client.get('/auth/session').status_code,401)

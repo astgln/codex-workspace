@@ -14,7 +14,7 @@ class AccountBoundaryTests(ServerTests):
         _, csrf = self.browser_session()
         Store(self.temp.name).mutate(lambda s:s['bindings'].update(owner=99,other=42))
         self.assertEqual(self.client.get('/auth/session').status_code,403)
-        for route in ('state','messages','history','uploads/start','uploads/get','push/config','push/subscribe','diagnostics'):
+        for route in ('e2ee/read','e2ee/send','e2ee/files/start','e2ee/files/get','e2ee/push/config','e2ee/push/subscribe'):
             with self.subTest(route=route):
                 response=self.client.post('/web/'+route,json={},headers={'X-CSRF-Token':csrf})
                 self.assertEqual(response.status_code,403)
@@ -22,7 +22,7 @@ class AccountBoundaryTests(ServerTests):
     def test_retired_endpoints_are_absent(self):
         _, csrf = self.browser_session()
         for route in ('decisions','grants','member-policy'):
-            self.assertEqual(self.client.post('/web/'+route,json={},headers={'X-CSRF-Token':csrf}).status_code,404)
+            self.assertEqual(self.client.post('/web/'+route,json={},headers={'X-CSRF-Token':csrf}).status_code,409)
 
     def test_other_verified_telegram_identity_cannot_login(self):
         from unittest.mock import patch

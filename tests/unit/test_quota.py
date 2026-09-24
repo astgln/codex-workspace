@@ -15,15 +15,13 @@ class QuotaTests(unittest.TestCase):
 
 
 class QuotaAPITests(ServerTests):
-    def test_usage_auth_validation_and_monotonicity(self):
+    def test_plaintext_quota_is_not_accepted_or_returned_in_session(self):
         now=int(time.time());data={'used_percent':63,'observed_at':now,'resets_at':now+1000}
-        self.assertEqual(self.client.post('/v2/usage',json=data).status_code,401)
         headers={'Authorization':'Bearer collector-test-key'}
-        self.assertEqual(self.client.post('/v2/usage',json={**data,'secret':'no'},headers=headers).status_code,400)
-        self.assertEqual(self.client.post('/v2/usage',json=data,headers=headers).status_code,200)
-        self.client.post('/v2/usage',json={**data,'observed_at':now-1,'used_percent':10},headers=headers)
+        self.assertEqual(self.client.post('/v2/usage',json=data,headers=headers).status_code,409)
         self.browser_session()
-        self.assertEqual(self.client.get('/auth/session').json()['workspace']['weekly_quota'],data)
+        self.assertNotIn('weekly_quota',self.client.get('/auth/session').json()['workspace'])
+
 
     def test_account_receives_quota(self):
         from codex_workspace.domain import domain, workspace
