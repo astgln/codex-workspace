@@ -18,9 +18,10 @@
 | `src/codex_workspace/relay` | FastAPI, cookie-сессии, SQLite и доставка зашифрованных записей |
 | `src/codex_workspace/domain` | Общие правила и модели; сохранённые модели прежнего транспорта |
 | `src/codex_workspace/cli` | Единая команда `codex-workspace` |
-| `src/codex_workspace/ops`, `ops/server` | Сборка релиза, установка и ресурсы служб |
+| `src/codex_workspace/ops`, `ops/server`, `ops/docker` | Сборка релиза, установка и ресурсы служб |
 
-API Gateway предоставляет публичный HTTPS и направляет запросы на VM.
+Публичный HTTPS обслуживает Caddy/другой reverse proxy либо API Gateway.
+Relay запускается в Docker Compose с постоянным volume или нативно на VM.
 На ноутбуке нет входящего сетевого сервиса: оба сборщика обращаются к relay
 исходящими HTTPS-запросами. Relay не имеет ключей расшифровки и не запускает Codex.
 
@@ -68,5 +69,5 @@ E2EE отсутствует. Без неё сессия сообщает об о
 
 `main` строго однопользовательский. `experimental/multi-user` расширяет его
 участниками и локально проверяемыми правами. В Yandex Cloud развёртывается только
-experimental. Подробности эксплуатации: [deployment.md](deployment.md),
+experimental. Подробности эксплуатации: [docker.md](docker.md), [deployment.md](deployment.md),
 [collector-routing.md](collector-routing.md), [security.md](security.md).
