@@ -15,7 +15,7 @@
 Входящие соединения к компьютеру и управляющий чат не требуются.
 
 - [Docker Compose и свой HTTPS-домен](docs/docker.md)
-- [Установка в Yandex Cloud](docs/installation.md)
+- [Yandex Cloud: все команды с нуля, VM или Docker](docs/installation.md)
 - [Архитектура и поток данных](docs/architecture.md)
 - [Развёртывание и обновление](docs/deployment.md)
 - [Локальные службы и восстановление](docs/collector-routing.md)
