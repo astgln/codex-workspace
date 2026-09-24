@@ -6,10 +6,19 @@ from codex_workspace.crypto.workspace_crypto import encode
 
 
 def identities(trust):
-    # Single-user baseline. Experimental overrides only this mapping.
-    return 1, {row['device']: 1 for row in trust.db.execute('SELECT device,scopes FROM device_grants')
-               if 'workspace' in json.loads(row['scopes'])}
-
+    from codex_workspace.crypto.workspace_crypto import CryptoError
+    row=trust.db.execute('SELECT value FROM encrypted_access WHERE id=1').fetchone()
+    if not row:raise CryptoError('Local account registry is not initialized')
+    state=json.loads(row['value']);owner=state['bindings']['owner'];mapping={}
+    for row in trust.db.execute("""SELECT devices.id,device_grants.scopes,encrypted_device_members.uid
+          FROM devices JOIN device_grants ON devices.id=device_grants.device LEFT JOIN encrypted_device_members
+          ON devices.id=encrypted_device_members.device WHERE devices.revoked=0"""):
+        scopes=json.loads(row['scopes'])
+        if row['uid'] is None:
+            if 'workspace' in scopes:mapping[row['id']]=owner
+        elif row['uid'] in state['bindings'].values() and row['uid']!=owner and 'workspace' not in scopes:
+            mapping[row['id']]=row['uid']
+    return owner,mapping
 
 
 def _snapshot(vault, trust, *, now=None):

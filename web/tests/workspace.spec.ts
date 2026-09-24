@@ -454,3 +454,13 @@ test('phone notification control reports subscription after an explicit permissi
   expect(subscriptions).toHaveLength(1);
   expect(await page.evaluate(()=>(window as any).permissionFromTap)).toBe(true);
 });
+
+test('owner creates an internal member without Telegram or initial grants',async({page})=>{
+ const f=await fixture(page);let command:any;
+ await page.route('**/web/add-member',route=>{command=route.request().postDataJSON();f.state.members.push({id:30,username:command.name,requires_approval:true,threads:[]});return route.fulfill({json:{ok:true}});});
+ await page.getByRole('button',{name:'Доступ к тредам',exact:true}).click();
+ await page.getByLabel('Имя участника').fill('New person');
+ await page.getByRole('button',{name:'Создать участника'}).click();
+ await expect(page.getByRole('heading',{name:'New person',exact:true})).toBeVisible();
+ expect(command).toEqual({name:'New person'});
+});
