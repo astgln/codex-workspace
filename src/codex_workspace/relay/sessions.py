@@ -11,17 +11,19 @@ TTL=8*3600
 def connection(store):
     db=store.connect()
     db.execute('CREATE TABLE IF NOT EXISTS browser_sessions(digest TEXT PRIMARY KEY,uid INTEGER NOT NULL,csrf TEXT NOT NULL,expires INTEGER NOT NULL,created INTEGER NOT NULL)')
+    if 'device' not in {row[1] for row in db.execute('PRAGMA table_info(browser_sessions)')}:
+        db.execute('ALTER TABLE browser_sessions ADD COLUMN device TEXT')
     db.commit()
     return db
 
 
-def issue(store,uid):
+def issue(store,uid,device=None):
     token=secrets.token_urlsafe(32);csrf=secrets.token_urlsafe(32);now=int(time.time())
     db=connection(store)
     try:
         with db:
             db.execute('DELETE FROM browser_sessions WHERE expires<=?',(now,))
-            db.execute('INSERT INTO browser_sessions VALUES(?,?,?,?,?)',(hashlib.sha256(token.encode()).hexdigest(),uid,csrf,now+TTL,now))
+            db.execute('INSERT INTO browser_sessions(digest,uid,csrf,expires,created,device) VALUES(?,?,?,?,?,?)',(hashlib.sha256(token.encode()).hexdigest(),uid,csrf,now+TTL,now,device))
             # Bound abandoned sessions without evicting the new browser session.
             db.execute('DELETE FROM browser_sessions WHERE uid=? AND digest NOT IN (SELECT digest FROM browser_sessions WHERE uid=? ORDER BY created DESC,rowid DESC LIMIT 20)',(uid,uid))
     finally:db.close()
@@ -31,9 +33,13 @@ def issue(store,uid):
 def verify(store,token):
     if not isinstance(token,str) or not 32<=len(token)<=128:raise workspace.Unauthorized()
     db=connection(store)
-    try:row=db.execute('SELECT uid,csrf,expires FROM browser_sessions WHERE digest=?',(hashlib.sha256(token.encode()).hexdigest(),)).fetchone()
+    try:row=db.execute('SELECT uid,csrf,expires,device FROM browser_sessions WHERE digest=?',(hashlib.sha256(token.encode()).hexdigest(),)).fetchone()
     finally:db.close()
     if not row or row[2]<=time.time():raise workspace.Unauthorized()
+    from .device_auth import identity
+    if not row[3]: raise workspace.Unauthorized()
+    device,_=identity(store,row[3])
+    if device['uid']!=row[0]:raise workspace.Unauthorized()
     return row[0],row[1]
 
 

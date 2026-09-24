@@ -25,7 +25,7 @@ export function LockedDevice({workspace,pair,logout}:{workspace:string;pair:(fra
    <button className="primary login-button" disabled={busy||!link.trim()} type="submit">Продолжить привязку</button>
   </form>
   {error&&<p role="alert">{error}</p>}
-  <p className="small muted">Вход через Telegram подтверждает аккаунт. Ключи сохраняются отдельно на каждом устройстве.</p>
+  <p className="small muted">Ключи сохраняются отдельно на каждом устройстве.</p>
   <button className="quiet" onClick={logout}>Выйти</button>
  </section></main>;
 }

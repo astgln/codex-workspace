@@ -2,6 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 
 // Presentation boundary only; encrypted-client tests retain the real client.
 test.beforeEach(async({context})=>{
+ await context.route('**/src/shared/api/login.ts',route=>route.fulfill({contentType:'application/javascript',body:'export * from "/tests/fixtures/presentation-login.ts";'}));
  await context.route('**/src/features/encryption/client.ts',route=>route.fulfill({contentType:'application/javascript',body:'export * from "/tests/fixtures/presentation-client.ts";'}));
 });
 
@@ -14,12 +15,6 @@ async function fixture(page: Page) {
     const path=new URL(route.request().url()).pathname;
     if(path==='/auth/logout'){loggedIn=false;return route.fulfill({json:{ok:true}});}
     return loggedIn?route.fulfill({json:{csrf:'test-csrf',workspace:state}}):route.fulfill({status:401,json:{error:'login_required'}});
-  });
-  // Only this test browser intercepts auth. The production API has no test mode.
-  await page.context().route('https://oauth.telegram.org/auth?*', route => {
-    const url=new URL(route.request().url());
-    expect(url.searchParams.get('origin')).toBe('http://127.0.0.1:5173');
-    return route.fulfill({contentType:'text/html',body:`<script>opener.postMessage({event:'auth_result',result:'test-browser-token'},'http://127.0.0.1:5173')</script>`});
   });
   await page.route('**/web/**', async route => {
     const path = new URL(route.request().url()).pathname;
@@ -38,7 +33,7 @@ async function fixture(page: Page) {
     await route.fulfill({json:output});
   });
   await page.goto('/');
-  await page.getByRole('button',{name:'Войти через Telegram'}).click();
+  await page.getByRole('button',{name:'Войти с ключом устройства'}).click();
   await expect(page.locator('.workspace-header')).toBeVisible();
   return {state,sent};
 }
@@ -94,90 +89,15 @@ test('uploaded files remain attached to their original thread and submitted payl
   expect(f.sent[0].thread).toBe('thread-launcher');
 });
 
-test('login configuration failure explains failure and permits retry',async({page})=>{
-  await page.route('**/web/login/config',route=>route.fulfill({status:503,json:{error:'unavailable'}}));
-  await page.goto('/');
-  await expect(page.getByRole('alert')).toContainText('Сервис временно недоступен');
-  await expect(page.getByRole('button',{name:'Повторить',exact:true})).toBeEnabled();
-  await page.route('**/web/login/config',route=>route.fulfill({json:{client_id:'123',nonce:'nonce',challenge:'challenge'}}));
-  await page.getByRole('button',{name:'Повторить',exact:true}).click();
-  await expect(page.getByRole('button',{name:'Войти через Telegram'})).toBeEnabled();
-});
-
-test('login without popup callback can be cancelled and retried',async({page})=>{
-  await page.route('**/web/login/config',route=>route.fulfill({json:{client_id:'123',nonce:'nonce',challenge:'challenge'}}));
-  await page.context().route('https://oauth.telegram.org/auth?*',route=>route.fulfill({contentType:'text/html',body:'Waiting for login'}));
-  await page.goto('/');
-  await page.getByRole('button',{name:'Войти через Telegram'}).click();
-  await expect(page.getByRole('status')).toContainText('обычном браузере');
-  await page.getByRole('button',{name:'Отменить вход'}).click();
-  await expect(page.getByRole('alert')).toContainText('Вход отменён');
-  await page.getByRole('button',{name:'Повторить',exact:true}).click();
-  await expect(page.getByRole('button',{name:'Войти через Telegram'})).toBeEnabled();
-});
-
-test('login ignores results from an unrelated window or origin',async({page})=>{
-  await page.route('**/web/login/config',route=>route.fulfill({json:{client_id:'123',nonce:'nonce',challenge:'challenge'}}));
-  let sessions=0;
-  await page.route('**/web/login/session',route=>{sessions++;return route.fulfill({status:401,json:{error:'invalid'}});});
-  await page.context().route('https://oauth.telegram.org/auth?*',route=>route.fulfill({contentType:'text/html',body:'Login'}));
-  await page.goto('/');
-  await page.evaluate(()=>{const open=window.open.bind(window);window.open=(...args)=>{const popup=open(...args);(window as any).__testPopup=popup;return popup;};});
-  const popupPromise=page.waitForEvent('popup');
-  await page.getByRole('button',{name:'Войти через Telegram'}).click();
-  const popup=await popupPromise;
-  await popup.waitForLoadState();
-  await page.evaluate(()=>{
-    window.dispatchEvent(new MessageEvent('message',{origin:'https://oauth.telegram.org',source:window,data:{event:'auth_result',result:'forged'}}));
-  });
-  await page.evaluate(()=>window.dispatchEvent(new MessageEvent('message',{origin:'https://unrelated.example',source:(window as any).__testPopup,data:{event:'auth_result',result:'forged'}})));
-  await page.getByRole('button',{name:'Отменить вход'}).click();
-  expect(sessions).toBe(0);
-});
-
-test('blocked login popup leaves an actionable error',async({page})=>{
-  await page.addInitScript(()=>{window.open=()=>null;});
-  await page.route('**/web/login/config',route=>route.fulfill({json:{client_id:'123',nonce:'nonce',challenge:'challenge'}}));
-  await page.goto('/');
-  await page.getByRole('button',{name:'Войти через Telegram'}).click();
-  await expect(page.getByRole('alert')).toContainText('Браузер заблокировал окно Telegram');
-  await expect(page.getByRole('button',{name:'Повторить',exact:true})).toBeEnabled();
-});
-
-test('unexpected Telegram payload diagnostic never exposes values',async({page})=>{
-  await page.route('**/web/login/config',route=>route.fulfill({json:{client_id:'123',nonce:'nonce',challenge:'challenge'}}));
-  await page.context().route('https://oauth.telegram.org/auth?*',route=>route.fulfill({contentType:'text/html',body:`<script>opener.postMessage({event:'auth_result',result:{id:123,username:'private-user',hash:'private-signature',auth_date:42},error:'private-error'},'http://127.0.0.1:5173')</script>`}));
-  await page.goto('/');
-  await page.getByRole('button',{name:'Войти через Telegram'}).click();
-  const alert=page.getByRole('alert');
-  await expect(alert).toContainText('result=object');
-  await expect(alert).toContainText('result_fields=auth_date,hash,id,username');
-  await expect(alert).not.toContainText('private-');
-});
-
-
-test('signed widget object is forwarded for server verification without decoding trust',async({page})=>{
-  await page.route('**/web/login/config',route=>route.fulfill({json:{client_id:'123',nonce:'nonce',challenge:'challenge'}}));
-  let submitted:any;
-  await page.route('**/web/login/session',route=>{submitted=route.request().postDataJSON();return route.fulfill({status:401,json:{error:'forged'}});});
-  await page.context().route('https://oauth.telegram.org/auth?*',route=>route.fulfill({contentType:'text/html',body:`<script>opener.postMessage({event:'auth_result',result:{id:42,username:'owner',auth_date:1000,hash:'forged'}},'http://127.0.0.1:5173')</script>`}));
-  await page.goto('/');
-  await page.getByRole('button',{name:'Войти через Telegram'}).click();
-  await expect(page.getByRole('alert')).toContainText('Войдите снова');
-  expect(submitted).toEqual({challenge:'challenge',widget_data:{id:42,username:'owner',auth_date:1000,hash:'forged'}});
-  await expect(page.getByRole('textbox',{name:'Сообщение',exact:true})).toHaveCount(0);
-});
-
-
 test('existing server session restores after reload and logout clears it',async({page})=>{
   await fixture(page);
   await page.reload();
   await expect(page.getByRole('button',{name:'Launcher',exact:true})).toBeVisible();
-  await expect(page.getByRole('button',{name:'Войти через Telegram'})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Войти с ключом устройства'})).toHaveCount(0);
   await page.getByRole('button',{name:'Выйти',exact:true}).click();
-  await expect(page.getByRole('button',{name:'Войти через Telegram'})).toBeEnabled();
+  await expect(page.getByRole('button',{name:'Войти с ключом устройства'})).toBeEnabled();
   await page.reload();
-  await expect(page.getByRole('button',{name:'Войти через Telegram'})).toBeEnabled();
+  await expect(page.getByRole('button',{name:'Войти с ключом устройства'})).toBeEnabled();
 });
 
 test('task history loads older messages and resets when changing thread',async({page})=>{
@@ -361,12 +281,12 @@ test('late workspace response cannot restore a logged out session',async({page})
  await page.getByRole('button',{name:'Обновить',exact:true}).click();
  await waiting;
  await page.getByRole('button',{name:'Выйти',exact:true}).click();
- await expect(page.getByRole('button',{name:'Войти через Telegram',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Войти с ключом устройства',exact:true})).toBeVisible();
  const response=page.waitForResponse('**/web/state');
  release();await response;
  await page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));
  await expect(page.getByRole('button',{name:'Launcher',exact:true})).toHaveCount(0);
- await expect(page.getByRole('button',{name:'Войти через Telegram',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Войти с ключом устройства',exact:true})).toBeVisible();
 });
 
 test('expired session during submission clears private drafts before next login',async({page})=>{
@@ -374,7 +294,7 @@ test('expired session during submission clears private drafts before next login'
  await page.getByRole('textbox',{name:'Сообщение',exact:true}).fill('Private draft from expired session');
  await page.route('**/web/messages',route=>route.fulfill({status:401,json:{error:'expired'}}));
  await page.getByRole('button',{name:'Отправить',exact:true}).click();
- await page.getByRole('button',{name:'Войти через Telegram',exact:true}).click();
+ await page.getByRole('button',{name:'Войти с ключом устройства',exact:true}).click();
  await expect(page.getByRole('textbox',{name:'Сообщение',exact:true})).toHaveValue('');
 });
 
@@ -398,9 +318,9 @@ for(const delayedStage of ['start','finish'])test(`upload ${delayedStage} respon
  await waiting;
  await page.route('**/web/state',route=>route.fulfill({status:401,json:{error:'expired'}}));
  await page.getByRole('button',{name:'Обновить',exact:true}).click();
- await expect(page.getByRole('button',{name:'Войти через Telegram',exact:true})).toBeEnabled();
+ await expect(page.getByRole('button',{name:'Войти с ключом устройства',exact:true})).toBeEnabled();
  await page.unroute('**/web/state');
- await page.getByRole('button',{name:'Войти через Telegram',exact:true}).click();
+ await page.getByRole('button',{name:'Войти с ключом устройства',exact:true}).click();
  await page.getByRole('textbox',{name:'Сообщение',exact:true}).fill('New session draft');
  const response=page.waitForResponse(`**/web/uploads/${delayedStage}`);
  release();await response;

@@ -71,8 +71,9 @@ def publish(ssh_interface=None, use_pinned_host_key=False):
     commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
     files=release_files(ROOT)
     files['release.json']=json.dumps({'branch':branch,'commit':commit}).encode()
-    settings={'secret_id':s['secret'],'OWNER_USERNAME':s['settings']['owner'],
+    settings={'OWNER_USERNAME':s['settings']['owner'],
         'CLIENT_KEY_HASH':s['client_hash'],'PROJECT_ID':s['project'],'PUBLIC_ORIGIN':s['url']}
+    settings['auth_pin']=json.loads((STATE/'device-auth.json').read_text())
     files['settings.json']=json.dumps(settings).encode()
     archive=io.BytesIO()
     with tarfile.open(fileobj=archive,mode='w:gz') as tar:

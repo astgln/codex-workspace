@@ -74,13 +74,14 @@ export function useWorkspaceSession() {
       setError(error instanceof Error ? error.message : 'Не удалось выполнить действие.');
     } finally { if (current === generation.current) setBusy(false); }
   };
-  const enter = () => {
+  const enter = (deviceId?:string) => {
     if (!config) return;
     const attempt = new AbortController();
     loginAttempt.current = attempt;
     generation.current++;
     setBusy(true); setError('');
-    login(config, attempt.signal).then(refresh).catch(error => {
+    const selection=deviceId?{devices:config.devices.filter(d=>d.deviceStamp===deviceId)}:config;
+    login(selection, attempt.signal).then(next=>{if(!attempt.signal.aborted)setState(next);}).catch(error => {
       setError(error.message); setConfig(null);
     }).finally(() => { setBusy(false); loginAttempt.current = null; });
   };

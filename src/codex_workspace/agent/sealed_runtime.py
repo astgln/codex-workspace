@@ -70,6 +70,8 @@ class SealedRuntime:
         delivery.publish()
         from codex_workspace.devices.device_control import DeviceControl
         DeviceControl(self.channel.vault,self.sealed.trust,self.channel).tick(self.catalog_scopes)
+        from codex_workspace.devices.auth_registry import publish as publish_auth
+        publish_auth(self.channel.api,self.channel.vault,self.sealed.trust)
         publish_results(self, self.api)
         for scope in sorted(self.scopes):
             # Scope keys must have been provisioned locally before the loop starts.

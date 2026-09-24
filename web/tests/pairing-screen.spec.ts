@@ -32,8 +32,10 @@ for(const paste of [false,true])test(`trusted link completes pairing and persist
  // Serve the same local build through a test-only HTTPS origin for origin pinning.
  await page.route('https://workspace.test/**',async route=>{
    const url=new URL(route.request().url());
+   if(url.pathname==='/auth/device/challenge')return route.fulfill({json:{workspace:fixture.invite.workspace,origin:'https://workspace.test',nonce:'A'.repeat(43),expires:Math.floor(Date.now()/1000)+60}});
+   if(url.pathname==='/auth/device/session')return route.fulfill({json:{ok:true,uid:10}});
    if(url.pathname==='/auth/session')return route.fulfill({json:{csrf:'test',workspace:{user:{id:10},threads:[],messages:[],collector_seen:null,encryption:{v:1,workspace:fixture.invite.workspace}}}});
-   if(url.pathname==='/web/e2ee/pairing/offer'){
+   if(url.pathname==='/auth/pairing/offer'){
      const offer=route.request().postDataJSON();
      expect(JSON.stringify(offer)).not.toContain(fixture.invite.secret);
      const grant=await page.evaluate(async({fixture,offer})=>{
@@ -45,10 +47,10 @@ for(const paste of [false,true])test(`trusted link completes pairing and persist
        const bundle={v:1,workspace:fixture.invite.workspace,origin:location.origin,device:await c.signerId(device),authority:fixture.invite.authority,revision:1,keys:[]};
        return c.seal(c.decode(fixture.invite.secret,32),{privateKey,publicKey},[fixture.invite.workspace,'devices','key-wrap',fixture.invite.id,2],new TextEncoder().encode(JSON.stringify(bundle)));
      },{fixture,offer});
-     await page.route('https://workspace.test/web/e2ee/pairing/read',r=>r.fulfill({json:{payload:{envelope:grant}}}));
+     await page.route('https://workspace.test/auth/pairing/read',r=>r.fulfill({json:{payload:{envelope:grant}}}));
      return route.fulfill({json:{ok:true}});
    }
-   if(url.pathname.startsWith('/web/'))return route.fulfill({json:{messages:[],pending:false}});
+   if(url.pathname.startsWith('/web/')||url.pathname.startsWith('/auth/pairing/'))return route.fulfill({json:{messages:[],pending:false}});
    return route.fulfill({response:await route.fetch({url:'http://127.0.0.1:5173'+url.pathname+url.search})});
  });
  const traffic:string[]=[];

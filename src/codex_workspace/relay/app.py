@@ -9,24 +9,17 @@ import time
 from fastapi import FastAPI, Request
 from fastapi.responses import Response
 from starlette.concurrency import run_in_threadpool
-from codex_workspace.domain import login, workspace, domain
+from codex_workspace.domain import workspace, domain
 from . import api
 from .store import Store
-from . import files, sessions, push, encryption_mode
+from . import files, sessions, push, encryption_mode, device_auth
 from .http_security import LoginBudget, secure_headers
 
 store = None
 
 
-async def refresh_login_keys():
+async def clean_files():
     while True:
-        try:
-            keys = await run_in_threadpool(login.public_keys, True)
-            now = int(time.time())
-            await run_in_threadpool(store.mutate, lambda state: login.cache_keys(state,{'keys':keys,'fetched_at':now},now))
-        except Exception:
-            # Never log request bodies or provider errors containing credentials.
-            pass
         await run_in_threadpool(files.cleanup, store)
         await asyncio.sleep(3600)
 
@@ -49,16 +42,17 @@ async def lifespan(app):
     config_path = os.environ.get('WORKSPACE_CONFIG')
     if config_path:
         config = json.loads(Path(config_path).read_text())
-        for key in ('TELEGRAM_BOT_TOKEN','OWNER_USERNAME','CLIENT_KEY_HASH','PROJECT_ID','PUBLIC_ORIGIN'):
+        for key in ('OWNER_USERNAME','CLIENT_KEY_HASH','PROJECT_ID','PUBLIC_ORIGIN'):
             os.environ[key] = config[key]
-    for key in ('TELEGRAM_BOT_TOKEN','OWNER_USERNAME','CLIENT_KEY_HASH','PROJECT_ID','PUBLIC_ORIGIN'):
+    for key in ('OWNER_USERNAME','CLIENT_KEY_HASH','PROJECT_ID','PUBLIC_ORIGIN'):
         if not os.environ.get(key):
             raise RuntimeError('Missing service configuration')
     store = Store(os.environ.get('WORKSPACE_DATA','/var/lib/codex-workspace'))
     sessions.upgrade_auth_trust(store)
+    sessions.connection(store).close()
     app.state.login_budget = LoginBudget()
     push.initialize(store)
-    task = asyncio.create_task(refresh_login_keys())
+    task = asyncio.create_task(clean_files())
     push_stop = asyncio.Event()
     notifications = asyncio.create_task(deliver_push(push_stop))
     yield
@@ -108,7 +102,7 @@ async def handle(request: Request, path: str):
             if mode is None:
                 return Response('{"error":"encryption_not_initialized"}',status_code=503,media_type='application/json')
             else:
-                owner=await run_in_threadpool(store.mutate,lambda state:workspace.is_owner(state,uid,os.environ['OWNER_USERNAME']))
+                owner=uid==(await run_in_threadpool(device_auth.current,store))['owner']
                 view={'user':{'id':uid},'encryption':mode,
                       'projects':[],'threads':[],'messages':[],'collector_seen':None,'catalog_updated':None}
             return Response(json.dumps({'csrf':csrf,'workspace':view}),media_type='application/json',headers={'Cache-Control':'no-store'})
@@ -121,31 +115,42 @@ async def handle(request: Request, path: str):
             response=Response('{"ok":true}',media_type='application/json',headers={'Cache-Control':'no-store'})
             response.delete_cookie(sessions.COOKIE,path='/',secure=True,httponly=True,samesite='lax')
             return response
-        if path=='web/login/session':
+        anonymous = path in ('auth/device/challenge','auth/device/session','auth/pairing/offer','auth/pairing/read')
+        if anonymous:
+            if request.method!='POST':return Response(status_code=405)
             if request.headers.get('origin')!=os.environ['PUBLIC_ORIGIN']:raise workspace.Forbidden()
-        elif path.startswith('web/') and path!='web/login/config':
+        elif path.startswith('web/'):
             uid,csrf=sessions.verify(store,request.cookies.get(sessions.COOKIE))
             sessions.check_csrf(request,csrf,os.environ['PUBLIC_ORIGIN'])
-            await run_in_threadpool(store.mutate,lambda state:workspace.is_owner(state,uid,os.environ['OWNER_USERNAME']))
-            # The pure API uses an internal signed identity. Browser requests
-            # authenticate only with the opaque HttpOnly cookie and CSRF token.
-            event['headers']['authorization']='Workspace '+workspace.issue_session(uid,os.environ['TELEGRAM_BOT_TOKEN'],int(time.time()))
     except workspace.Unauthorized:
         return Response('{"error":"login_required"}',status_code=401,media_type='application/json',headers={'Cache-Control':'no-store'})
     except workspace.Forbidden:
         return Response('{"error":"access_denied"}',status_code=403,media_type='application/json',headers={'Cache-Control':'no-store'})
     if path == 'health':
         result = api.response(200,{'status':'ok','mode':'standalone-web'})
-    elif path.startswith('web/e2ee/pairing/') or path.startswith('v2/e2ee/pairing/'):
+    elif path in ('auth/device/challenge','auth/device/session','v2/e2ee/auth/registry'):
+        try:
+            if request.method!='POST':return Response(status_code=405)
+            data=json.loads(body)
+            if path=='v2/e2ee/auth/registry':
+                if not api.authorized(event):raise workspace.Unauthorized()
+                value=await run_in_threadpool(device_auth.registry,store,data,os.environ['PUBLIC_ORIGIN'])
+            elif path=='auth/device/challenge':
+                value=await run_in_threadpool(device_auth.challenge,store,data,os.environ['PUBLIC_ORIGIN'])
+            else:
+                uid,device=await run_in_threadpool(device_auth.authenticate,store,data,os.environ['PUBLIC_ORIGIN'])
+                cookie,_=await run_in_threadpool(sessions.issue,store,uid,device)
+                value={'ok':True,'uid':uid}
+            result=api.response(200,value)
+        except workspace.Unauthorized:result=api.response(401,{'error':'device_login_required'})
+        except Exception:result=api.response(400,{'error':'invalid_device_authentication'})
+    elif path.startswith(('web/e2ee/pairing/','v2/e2ee/pairing/','auth/pairing/')):
         from . import opaque, pairing
         try:
             if request.method != 'POST':return Response(status_code=405)
             collector = path.startswith('v2/')
             if collector:
                 if not api.authorized(event):raise workspace.Unauthorized()
-            else:
-                allowed = await run_in_threadpool(store.mutate, lambda state: workspace.is_owner(state,uid,os.environ['OWNER_USERNAME']))
-                if not allowed:raise workspace.Forbidden()
             value = await run_in_threadpool(pairing.handle,store,path.rsplit('/',1)[1],json.loads(body),collector=collector)
             result=api.response(200,value)
         except workspace.Unauthorized:result=api.response(401,{'error':'login_required'})
@@ -162,7 +167,7 @@ async def handle(request: Request, path: str):
                 if not api.authorized(event):raise workspace.Unauthorized()
                 file_uid = None
             else:
-                allowed = await run_in_threadpool(store.mutate, lambda state: workspace.is_owner(state,uid,os.environ['OWNER_USERNAME']))
+                allowed = uid == (await run_in_threadpool(device_auth.current,store))['owner']
                 if not allowed:raise workspace.Forbidden()
                 file_uid = uid
             value = await run_in_threadpool(opaque_files.handle,store,file_uid,path.rsplit('/',1)[1],json.loads(body),collector=collector)
@@ -181,7 +186,7 @@ async def handle(request: Request, path: str):
                 if not api.authorized(event):raise workspace.Unauthorized()
             else:
                 # Only the pinned account may access opaque records.
-                allowed = await run_in_threadpool(store.mutate, lambda state: workspace.is_owner(state,uid,os.environ['OWNER_USERNAME']))
+                allowed = uid == (await run_in_threadpool(device_auth.current,store))['owner']
                 if not allowed:raise workspace.Forbidden()
             data = json.loads(body)
             operation = opaque.read if path.endswith('/read') else opaque.publish
@@ -204,13 +209,6 @@ async def handle(request: Request, path: str):
             result=api.response(200,value)
         except workspace.Forbidden:result=api.response(403,{'error':'access_denied'})
         except (ValueError,TypeError,domain.Rejected):result=api.response(400,{'error':'invalid_push'})
-    elif path in ('web/login/config','web/login/session'):
-        result = await run_in_threadpool(api.web_api,event,None,mutate=store.mutate)
-        if path=='web/login/session' and result['statusCode']==200:
-            signed=json.loads(result['body'])['token']
-            uid=workspace.verify_session(signed,os.environ['TELEGRAM_BOT_TOKEN'],int(time.time()))
-            cookie,_=await run_in_threadpool(sessions.issue,store,uid)
-            result=api.response(200,{'ok':True})
     elif path.startswith(('web/','v2/','auth/')):
         result = api.response(404,{'error':'not_found'})
     else:

@@ -17,6 +17,6 @@ def read(store):
 
 def permitted(path):
     if path.startswith(('web/e2ee/','v2/e2ee/')):return True
-    if path in ('health','auth/session','auth/logout','web/login/config','web/login/session'):return True
+    if path in ('health','auth/session','auth/logout','auth/device/challenge','auth/device/session','auth/pairing/offer','auth/pairing/read'):return True
     # Static assets only; unknown API namespaces never reach legacy handlers.
     return not path.startswith(('web/','v2/','auth/'))

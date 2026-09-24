@@ -16,14 +16,6 @@ class VmApiTests(unittest.TestCase):
             capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_login_adapter_cannot_accept_retired_content_routes(self):
-        with patch.dict('os.environ', {'TELEGRAM_BOT_TOKEN':'123:test-token','OWNER_USERNAME':'owner'}):
-            for path in ('/web/state','/web/messages','/v2/inbox/claim','/v2/inbox/ack'):
-                with self.subTest(path=path):
-                    def forbidden_store(operation):self.fail('Retired route reached storage')
-                    result=api.web_api({'path':path,'httpMethod':'POST','body':'{}'},mutate=forbidden_store)
-                    self.assertEqual(result['statusCode'],404)
-
     def test_collector_token_check_uses_configured_hash(self):
         for key in ('first-collector','second-collector'):
             with patch.dict('os.environ',{'CLIENT_KEY_HASH':hashlib.sha256(key.encode()).hexdigest()}):

@@ -8,7 +8,7 @@ class LoginBudget:
         self.buckets = {}
 
     def take(self, path):
-        capacity = {'web/login/config': 120, 'web/login/session': 30}.get(path)
+        capacity = {'auth/device/challenge':60, 'auth/device/session':30, 'auth/pairing/offer':30, 'auth/pairing/read':120}.get(path)
         if capacity is None:
             return 0
         now = self.clock()

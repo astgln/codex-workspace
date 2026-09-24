@@ -32,8 +32,9 @@ export function App({initialPairingFragment=''}:{initialPairingFragment?:string}
  useEffect(()=>{setDiff(null);},[resetVersion]);
  const history=useThreadHistory(selected,Boolean(state)&&section==='threads');
  const scroll=useConversationScroll(state&&section==='threads'?`${state.user.id}:${selected}`:'',Boolean(history.page),history.page?.before||null,before=>void history.refresh(before));
- if(!state)return <LoginPage checking={checking} ready={Boolean(config)} busy={busy} preparing={preparing} error={error} enter={enter} cancel={cancelLogin} prepare={prepare}/>;
- if(pairingFragment)return <PairingScreen key={String(state.user.id)} account={String(state.user.id)} fragment={pairingFragment} close={()=>{setPairingFragment('');void refresh();}}/>;
+ if(pairingFragment)return <PairingScreen account={String(state?.user.id??0)} fragment={pairingFragment} close={()=>window.location.reload()}/>;
+ if(!state)return <LoginPage devices={config?.devices} pair={setPairingFragment} checking={checking} ready={Boolean(config)} busy={busy} preparing={preparing} error={error} enter={enter} cancel={cancelLogin} prepare={prepare}/>;
+
  if(state.encryption_locked)return <LockedDevice workspace={state.encryption!.workspace} pair={setPairingFragment} logout={logout}/>;
  const online=state.collector_seen!==null&&Date.now()/1000-state.collector_seen<600;
  return <div className="workspace flex w-screen overflow-hidden bg-background text-foreground">

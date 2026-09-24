@@ -12,24 +12,18 @@ from tests.unit.test_server import ServerTests
 class AccountBoundaryTests(ServerTests):
     def test_old_cookie_is_denied_on_every_private_route(self):
         _, csrf = self.browser_session()
-        Store(self.temp.name).mutate(lambda s:s['bindings'].update(owner=99,other=42))
-        self.assertEqual(self.client.get('/auth/session').status_code,403)
+        with Store(self.temp.name).connect() as db:db.execute('DELETE FROM auth_registry')
+        self.assertEqual(self.client.get('/auth/session').status_code,401)
         for route in ('e2ee/read','e2ee/send','e2ee/files/start','e2ee/files/get','e2ee/push/config','e2ee/push/subscribe'):
             with self.subTest(route=route):
                 response=self.client.post('/web/'+route,json={},headers={'X-CSRF-Token':csrf})
-                self.assertEqual(response.status_code,403)
+                self.assertEqual(response.status_code,401)
 
     def test_retired_endpoints_are_absent(self):
         _, csrf = self.browser_session()
         for route in ('decisions','grants','member-policy'):
             self.assertEqual(self.client.post('/web/'+route,json={},headers={'X-CSRF-Token':csrf}).status_code,409)
 
-    def test_other_verified_telegram_identity_cannot_login(self):
-        from unittest.mock import patch
-        challenge=self.client.get('/web/login/config').json()['challenge']
-        with patch('codex_workspace.domain.login.verify_id_token',return_value={'id':20,'username':'other'}):
-            response=self.client.post('/web/login/session',json={'challenge':challenge,'id_token':'test'})
-        self.assertEqual(response.status_code,403)
 
 class SchemaImportTests(unittest.TestCase):
     def test_schema3_preserves_content_and_invalidates_waiting_items(self):

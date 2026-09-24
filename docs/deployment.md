@@ -19,33 +19,32 @@
 
 ## Сервер
 
-Нужны VM Ubuntu, сервисный аккаунт с доступом только к нужному Lockbox secret,
+Нужны VM Ubuntu, сервисный аккаунт VM,
 API Gateway с публичным HTTPS и закрытая сеть Gateway → VM:8080.
 SSH ограничивается проверенным административным IPv4 /32. Скрипты не изменяют VPN.
 
-Секрет `TELEGRAM_BOT_TOKEN` хранится в Lockbox. Закрытая локальная конфигурация
+Закрытая локальная конфигурация
 `.local/deployment.json` содержит IDs ресурсов, `folder`, `project` (ID области
-каталога), `settings.owner`, `secret`, `client_hash`, `url`, `vm_instance`,
+каталога), `settings.owner`, `client_hash`, `url`, `vm_instance`,
 `vm_public_ip`, `vm_private_ip`, `vm_network`, `gateway`, `release_branch`.
 Значение клиентского ключа в этот JSON не помещается.
 Существующие ресурсы импортируйте по проверенным ID; не угадывайте VM по SSH alias.
 
 ```sh
 codex-workspace provision --folder FOLDER_ID --project CATALOG_ID \
-  --owner TELEGRAM_USERNAME --ssh-source ADMIN_IPV4
+  --owner owner --ssh-source ADMIN_IPV4
 npm ci --prefix web --ignore-scripts
 npm --prefix web run build
 codex-workspace deploy publish
 ```
 
-`codex-workspace provision` требует заранее заданного `secret` в deployment.json. Это
-инструмент VM provisioning, а не автоматическое создание Telegram-бота и Lockbox.
+Перед публикацией экспортируйте открытый корневой ключ в `device-auth.json`
+каталога состояния — см. [вход по ключу устройства](device-login.md).
 Для отдельной разрешённой сети можно явно указать `--ssh-interface en0` у
 `codex-workspace deploy publish`. Интерфейс должен уже существовать; маршруты не меняются.
 
 SSH host key берётся из аутентифицированного Compute API, проверка host key
-обязательна. Артефакт передаётся SCP и сверяется по SHA-256. Установщик получает
-секрет из Lockbox, выполняет резервное копирование SQLite и репетицию миграции,
+обязательна. Артефакт передаётся SCP и сверяется по SHA-256. Установщик закрепляет открытый ключ авторизации, выполняет резервное копирование SQLite и репетицию миграции,
 затем переключает `/opt/codex-workspace/current` и перезапускает `codex-workspace`.
 Каждый релиз устанавливается в собственную `.venv`. Unit закрепляет абсолютные
 пути интерпретатора и static за каталогом этого релиза; подготовка кандидата
@@ -55,10 +54,10 @@ unit; новая установка её не использует.
 Проверка `/health` по SSH подтверждает доступность процесса, а не вход пользователя.
 
 Для нового Gateway выполните `codex-workspace deploy cutover` после проверки VM.
-В BotFather зарегистрируйте точный HTTPS origin для Telegram Login. Корневой URL
-сайта работает без специальных query-параметров. Серверу передаются
-`OWNER_USERNAME`, `TELEGRAM_BOT_TOKEN`, `CLIENT_KEY_HASH`, `PROJECT_ID`,
-`PUBLIC_ORIGIN`. Конфигурация `/etc/codex-workspace/config.json` закрыта для чтения
+Настройте точный HTTPS origin. Корневой URL сайта работает без специальных
+query-параметров. Серверу передаются `OWNER_USERNAME` (внутренняя метка владельца),
+`CLIENT_KEY_HASH`, `PROJECT_ID`, `PUBLIC_ORIGIN` и открытый pin авторизации.
+Конфигурация `/etc/codex-workspace/config.json` закрыта для чтения
 посторонним. Секреты не включаются в Git, cloud-init или argv.
 
 ## Компьютер с Codex
@@ -115,11 +114,10 @@ git worktree add worktrees/experimental experimental/multi-user
 
 ## Обновление безопасности входа
 
-После установки версии с server-only JWKS прежние сессии и push-регистрации
-однократно отзываются. Нужно заново войти через Telegram; открытие приложения
-после входа повторно регистрирует существующую push-подписку браузера.
-Ключи Telegram сервер получает самостоятельно; локальный сборщик их больше
-не скачивает и не передаёт. Проверьте исходящий HTTPS VM к oauth.telegram.org.
+После перехода на вход по ключу старые Telegram-cookie не принимаются.
+Уже привязанные устройства используют прежние ключи; повторное подключение
+требуется только устройствам без локальных ключей. Telegram-токен и Lockbox
+больше не нужны серверу. Старые облачные секреты не удаляются установщиком.
 
 Если Compute API временно недоступен, ранее проверенный ключ этой же VM можно
 использовать явно: `codex-workspace deploy publish --use-pinned-host-key`. Файл должен

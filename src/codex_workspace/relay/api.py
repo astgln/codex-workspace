@@ -36,49 +36,6 @@ def decode(event):
     return result
 
 
-def web_api(event, context=None, *, mutate):
-    """Website API authenticated by verified Telegram Login, never Mini App data."""
-    from codex_workspace.domain import workspace, login
-    try:
-        path = event.get('path', '')
-        now = int(time.time())
-        secret = os.environ['TELEGRAM_BOT_TOKEN']
-        client_id = os.environ.get('LOGIN_CLIENT_ID') or secret.split(':', 1)[0]
-        owner = os.environ['OWNER_USERNAME']
-        if path == '/web/login/config' and event.get('httpMethod') == 'GET':
-            return response(200, {'client_id': client_id, **login.new_challenge(secret, now)})
-        if event.get('httpMethod') != 'POST':
-            return response(405, {'error': 'method'})
-        body = decode(event)
-        if path == '/web/login/session':
-            nonce = login.verify_challenge(body.get('challenge'), secret, now)
-            if ('widget_data' in body) == ('id_token' in body):
-                raise workspace.Unauthorized()
-            widget = body.get('widget_data') if 'widget_data' in body else None
-            if 'widget_data' in body:
-                user = login.verify_widget(widget, secret, now)
-            else:
-                keys = mutate(lambda state: login.cached_keys(state, now))
-                user = login.verify_id_token(body.get('id_token'), client_id, nonce, now, keys=keys)
-            def authenticate(state):
-                login.consume_challenge(state, nonce, now)
-                if widget is not None:
-                    login.consume_widget(state, widget['hash'], now)
-                return workspace.bind_user(state, user, owner)
-            uid = mutate(authenticate)
-            return response(200, {'token': workspace.issue_session(uid, secret, now), 'expires_in': workspace.SESSION_TTL})
-        return response(404, {'error': 'not_found'})
-    except workspace.Unauthorized:
-        return response(401, {'error': 'telegram_login_required'})
-    except workspace.Forbidden:
-        return response(403, {'error': 'access_denied'})
-    except domain.Rejected:
-        return response(409, {'error': 'conflict'})
-    except (ValueError, TypeError, KeyError):
-        return response(400, {'error': 'invalid_request'})
-    except Exception:
-        return response(503, {'error': 'temporarily_unavailable'})
-
 
 def website(event, context):
     """Serve only build-manifest entries, never arbitrary filesystem paths."""
@@ -96,4 +53,4 @@ def website(event, context):
                 'Cache-Control': 'no-store' if path in ('/', '/sw.js', '/manifest.webmanifest') else 'public, max-age=31536000, immutable',
                 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
                 'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
-                'Content-Security-Policy': "default-src 'self'; script-src 'self' https://oauth.telegram.org; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://oauth.telegram.org; frame-src https://oauth.telegram.org; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self' https://oauth.telegram.org"}}
+                'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"}}

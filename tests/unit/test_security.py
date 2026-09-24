@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
-from codex_workspace.domain import login, workspace
+from codex_workspace.domain import workspace
 from codex_workspace.domain.redaction import public_text, response_body
 from codex_workspace.relay import sessions
 from codex_workspace.relay.http_security import LoginBudget
@@ -39,10 +39,10 @@ class SecurityAPITests(ServerTests):
     def test_anonymous_login_has_bounded_verification_work(self):
         from codex_workspace.relay.app import app
         app.state.login_budget = LoginBudget(clock=lambda: 100)
-        with patch('codex_workspace.relay.api.web_api', return_value={'statusCode':401,'body':'{}'}) as verification:
+        with patch('codex_workspace.relay.device_auth.authenticate', side_effect=workspace.Unauthorized) as verification:
             for _ in range(30):
-                self.assertEqual(self.client.post('/web/login/session',json={}).status_code,401)
-            limited=self.client.post('/web/login/session',json={})
+                self.assertEqual(self.client.post('/auth/device/session',json={}).status_code,401)
+            limited=self.client.post('/auth/device/session',json={})
             self.assertEqual(limited.status_code,429)
             self.assertEqual(verification.call_count,30)
             self.assertIn('retry-after',limited.headers)
@@ -54,7 +54,6 @@ class TrustUpgradeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             store=Store(directory)
             store.mutate(lambda state:state.update(login_jwks={'keys':['untrusted'],'fetched_at':1000}))
-            self.assertIsNone(login.cached_keys(store.mutate(lambda s:s.copy()),1001))
             old,_=sessions.issue(store,42)
             with store.connect() as db:
                 db.execute('CREATE TABLE push_subscriptions(id TEXT)')
@@ -66,14 +65,14 @@ class TrustUpgradeTests(unittest.TestCase):
                 self.assertEqual(db.execute('SELECT count(*) FROM push_subscriptions').fetchone()[0],0)
             current,_=sessions.issue(store,42)
             sessions.upgrade_auth_trust(store)
-            self.assertEqual(sessions.verify(store,current)[0],42)
+            with self.assertRaises(workspace.Unauthorized):sessions.verify(store,current)
 
     def test_budget_refills_without_trusting_forwarded_ip_headers(self):
         now=[100.0];budget=LoginBudget(clock=lambda:now[0])
-        for _ in range(30):self.assertEqual(budget.take('web/login/session'),0)
-        self.assertEqual(budget.take('web/login/session'),2)
+        for _ in range(30):self.assertEqual(budget.take('auth/device/session'),0)
+        self.assertEqual(budget.take('auth/device/session'),2)
         now[0]+=2
-        self.assertEqual(budget.take('web/login/session'),0)
+        self.assertEqual(budget.take('auth/device/session'),0)
         self.assertEqual(budget.take('web/state'),0)
 
 

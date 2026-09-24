@@ -30,7 +30,6 @@ def provision(args):
         '--rule','direction=egress,port=any,protocol=any,v4-cidrs=[0.0.0.0/0]'])
     deployment.checkpoint('vm_ssh_source',source)
     account = deployment.resource('vm_account',['iam','service-account'],'codex-workspace-vm')
-    deployment.bind(['lockbox','secret'],deployment.state['secret'],'lockbox.payloadViewer',account)
     cloud_config = {'users':[{'name':'bridge','shell':'/bin/bash','lock_passwd':True,
         'sudo':'ALL=(ALL) NOPASSWD:ALL','ssh_authorized_keys':[key.with_suffix('.pub').read_text().strip()]}],
         'ssh_pwauth':False,'disable_root':True,'package_update':True,

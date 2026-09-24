@@ -82,3 +82,25 @@ export async function forgetDevice(account: string, workspace: string): Promise<
 export async function publicDeviceKey(device: Device): Promise<string> {
   return encode(new Uint8Array(await crypto.subtle.exportKey('spki', device.signing.publicKey)));
 }
+
+/** Enumerate only public identity and local keys; nothing is sent until explicit login. */
+export async function enrolledDevices():Promise<Device[]>{
+ return operation(await openDB(),'readonly',(store,result)=>{
+  const read=store.getAll();read.onsuccess=()=>result(read.result.filter((d:Device)=>d.bundle?.origin===location.origin));
+ });
+}
+export async function bindDeviceAccount(device:Device,account:string):Promise<void>{
+ if(!/^\d{1,16}$/.test(account))throw new Error('Некорректный аккаунт.');
+ let changed=false;
+ await operation<void>(await openDB(),'readwrite',(store,result)=>{
+  const read=store.get(device.identity);
+  read.onsuccess=()=>{
+   const saved=read.result as Device|undefined;
+   if(!saved||saved.deviceStamp!==device.deviceStamp){changed=true;result(undefined);return;}
+   store.put({...saved,account,identity:identity(account,device.workspace)});
+   if(saved.identity!==identity(account,device.workspace))store.delete(saved.identity);
+   result(undefined);
+  };
+ });
+ if(changed)throw new Error('Ключ устройства изменился.');
+}

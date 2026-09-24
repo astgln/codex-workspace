@@ -1,6 +1,7 @@
 import {useEffect, useRef, useState} from 'react';
 import {createPairingOffer, openPairingGrant, parsePairingFragment} from './pairing';
 import {getOrCreateDevice, installBundle, loadDevice} from './vault';
+import {authenticateDevice} from '../../shared/api/login';
 import {request} from '../../shared/api/transport';
 import type {Envelope} from './envelope';
 
@@ -30,9 +31,9 @@ export function PairingScreen({account, fragment, close}: {account:string; fragm
       pending.current ??= createPairingOffer(invitation, device.signing);
       const offer = await pending.current;
       if (active.current !== run) return;
-      await request('/web/e2ee/pairing/offer', {workspace:invitation.workspace, ...offer});
+      await request('/auth/pairing/offer', {workspace:invitation.workspace, ...offer});
       while (active.current === run && Date.now()/1000 < invitation.expires) {
-        const reply = await request<{payload:{envelope:Envelope}|null}>('/web/e2ee/pairing/read',
+        const reply = await request<{payload:{envelope:Envelope}|null}>('/auth/pairing/read',
           {workspace:invitation.workspace,id:invitation.id});
         if (active.current !== run) return;
         if (reply.payload) {
@@ -41,6 +42,7 @@ export function PairingScreen({account, fragment, close}: {account:string; fragm
           await installBundle(account,bundle,{workspace:invitation.workspace,origin:location.origin,authority:invitation.authority});
           const saved=await loadDevice(account,invitation.workspace);
           if(!saved?.bundle||saved.deviceStamp!==device.deviceStamp||JSON.stringify(saved.bundle)!==JSON.stringify(bundle))throw new Error('Key storage verification failed');
+          await authenticateDevice(saved);
           if (active.current === run) {pending.current=null;setStatus('done');}
           return;
         }
@@ -54,7 +56,7 @@ export function PairingScreen({account, fragment, close}: {account:string; fragm
   };
   return <main className="login-page"><section className="login-card" aria-label="Привязка устройства">
     <h1>Привязать устройство</h1>
-    <p className="muted">Открывайте приглашение только со своего доверенного устройства. Вход через Telegram сам по себе не даёт ключей.</p>
+    <p className="muted">Открывайте приглашение только со своего доверенного устройства. Приглашение даёт этому устройству доступ к вашему пространству.</p>
     <p role="status" className="small muted">{status==='waiting'?'Ожидаем подтверждение локального обработчика…':status==='done'?'Ключи проверены и сохранены на этом устройстве.':status==='error'?'Не удалось завершить привязку. Проверьте связь и срок приглашения.':''}</p>
     {status!=='done'&&<button className="primary login-button" disabled={status==='waiting'} onClick={()=>void connect()}>{status==='error'?'Повторить':'Привязать'}</button>}
     <button className="quiet" onClick={()=>{active.current++;pending.current=null;close();}}>{status==='done'?'Закрыть':'Отмена'}</button>

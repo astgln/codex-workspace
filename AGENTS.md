@@ -3,7 +3,7 @@
 ## Scope and references
 
 This repository owns the web/PWA client, ciphertext relay and outbound local
-collectors for existing Codex tasks. Telegram supplies login only.
+collectors for existing Codex tasks. Login uses keys of locally enrolled devices.
 Task-coordination authorization belongs in the user's global AGENTS.md; do not
 copy it here. Do not import unrelated workspace rules or game-specific paths.
 
@@ -45,7 +45,7 @@ Never copy secret configuration values into documentation.
   keys, invalid signatures, damaged pins or network errors must fail closed;
   never enable plaintext fallback to make a feature work.
 - The relay does not receive decryption keys or establish execution permissions.
-  Telegram login alone does not enroll a trusted device. Verify signed intent,
+  A server identity alone does not enroll a trusted device. Verify signed intent,
   target, attachments, replay protection and local authorization before execution.
 - In experimental, enforce task/project grants, task exclusions and approvals at
   the trusted endpoint. A server-controlled role cannot widen cryptographic access.

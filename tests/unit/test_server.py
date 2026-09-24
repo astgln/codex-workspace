@@ -20,15 +20,14 @@ class ServerTests(unittest.TestCase):
         mode=Path(self.temp.name)/'e2ee-mode.json'
         mode.write_text(json.dumps({'v':1,'workspace':base64.urlsafe_b64encode(b'w'*32).decode().rstrip('=')}));mode.chmod(0o600)
         self.env=patch.dict('os.environ',{'WORKSPACE_CONFIG':'','WORKSPACE_DATA':self.temp.name,
-            'TELEGRAM_BOT_TOKEN':'123:test-only','OWNER_USERNAME':'owner',
+            'OWNER_USERNAME':'owner',
             'CLIENT_KEY_HASH':hashlib.sha256(b'collector-test-key').hexdigest(),'PROJECT_ID':'project-example','PUBLIC_ORIGIN':'https://workspace.test'})
         self.env.start()
-        self.keys=patch('codex_workspace.domain.login.public_keys',side_effect=RuntimeError('offline test'));self.keys.start()
         self.client=TestClient(app,base_url='https://workspace.test',headers={'Origin':'https://workspace.test'});self.client.__enter__()
 
     def tearDown(self):
         self.client.__exit__(None,None,None)
-        self.keys.stop();self.env.stop();self.temp.cleanup()
+        self.env.stop();self.temp.cleanup()
 
     def test_pairing_requires_owner_csrf_and_collector_registration(self):
         from codex_workspace.crypto.workspace_crypto import encode
@@ -74,7 +73,7 @@ class ServerTests(unittest.TestCase):
 
     def test_health_and_auth_separation(self):
         self.assertEqual(self.client.get('/health').json()['mode'],'standalone-web')
-        self.assertEqual(self.client.get('/web/login/config').status_code,200)
+        self.assertEqual(self.client.get('/web/login/config').status_code,409)
         self.assertEqual(self.client.post('/web/e2ee/read',json={}).status_code,401)
         self.assertEqual(self.client.post('/v2/e2ee/read',json={}).status_code,401)
         self.assertEqual(self.client.post('/web/state',json={}).status_code,409)
@@ -102,38 +101,44 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.client.post('/v2/inbox/claim',json={},headers=headers).status_code,409)
 
 
-    def test_widget_login_verified_bound_and_replay_rejected(self):
-        data={'id':42,'first_name':'Owner','username':'owner','auth_date':int(time.time())}
-        canonical='\n'.join(f'{k}={v}' for k,v in sorted(data.items()))
-        data['hash']=hmac.new(hashlib.sha256(b'123:test-only').digest(),canonical.encode(),hashlib.sha256).hexdigest()
-        challenge=self.client.get('/web/login/config').json()['challenge']
-        body={'widget_data':data,'challenge':challenge}
-        result=self.client.post('/web/login/session',json=body)
-        self.assertEqual(result.status_code,200)
-        cookie=result.headers['set-cookie']
-        for attribute in ('Secure','HttpOnly','SameSite=lax','Path=/'):
-            self.assertIn(attribute,cookie)
-        self.assertNotIn('Domain=',cookie)
-        self.assertNotIn('token',result.json())
-        csrf=self.client.get('/auth/session').json()['csrf']
-        view=self.client.get('/auth/session')
-        self.assertEqual(view.json()['workspace']['user'],{'id':42})
-        fresh=self.client.get('/web/login/config').json()['challenge']
-        self.assertEqual(self.client.post('/web/login/session',json={**body,'challenge':fresh}).status_code,401)
-        self.assertEqual(self.client.post('/web/login/session',json={**body,'id_token':'ambiguous'}).status_code,401)
-
-    def test_forged_widget_never_binds_owner(self):
-        body={'widget_data':{'id':99,'username':'owner','auth_date':int(time.time()),'hash':'0'*64},
-              'challenge':self.client.get('/web/login/config').json()['challenge']}
-        self.assertEqual(self.client.post('/web/login/session',json=body).status_code,401)
-        self.assertEqual(Store(self.temp.name).mutate(lambda s:s['bindings']),{})
+    def test_retired_telegram_login_cannot_issue_session(self):
+        for path in ('/web/login/config','/web/login/session'):
+            self.assertEqual(self.client.post(path,json={}).status_code,409)
 
     def browser_session(self):
         store=Store(self.temp.name)
         store.mutate(lambda s:s['bindings'].update(owner=42))
-        token,csrf=sessions.issue(store,42)
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from codex_workspace.crypto.device_auth import sign,message
+        from codex_workspace.crypto.workspace_crypto import encode,public_bytes,signer_id
+        from codex_workspace.relay import device_auth
+        root=ec.generate_private_key(ec.SECP256R1());device=ec.generate_private_key(ec.SECP256R1())
+        pin=Path(self.temp.name)/'device-auth.json';pin.write_text(json.dumps({'workspace':encode(b'w'*32),'authority':encode(public_bytes(root))}));pin.chmod(0o600)
+        payload={'v':1,'workspace':encode(b'w'*32),'origin':'https://workspace.test','owner':42,'devices':[{'id':signer_id(device),'public_key':encode(public_bytes(device)),'uid':42}],
+                 'issued':int(time.time()),'expires':int(time.time())+86400,'revision':time.time_ns()//1000000}
+        device_auth.registry(store,{'payload':payload,'signature':sign(root,message('registry',payload))},'https://workspace.test')
+        self.auth_device=device
+        token,csrf=sessions.issue(store,42,signer_id(device))
         self.client.cookies.set(sessions.COOKIE,token,domain='workspace.test',path='/')
         return token,csrf
+
+    def test_device_proof_issues_cookie_once_and_requires_same_origin(self):
+        from codex_workspace.crypto.device_auth import message,sign
+        from codex_workspace.crypto.workspace_crypto import signer_id,encode,decode
+        from cryptography.hazmat.primitives.asymmetric import utils
+        self.browser_session();self.client.cookies.clear()
+        device=signer_id(self.auth_device)
+        self.assertEqual(self.client.post('/auth/device/challenge',json={'device':device},headers={'Origin':'https://evil.test'}).status_code,403)
+        challenge=self.client.post('/auth/device/challenge',json={'device':device}).json()
+        signature=decode(sign(self.auth_device,message('login','https://workspace.test',challenge['workspace'],device,challenge['nonce'],challenge['expires'])),maximum=80)
+        r,s=utils.decode_dss_signature(signature)
+        body={'device':device,'nonce':challenge['nonce'],'signature':encode(r.to_bytes(32,'big')+s.to_bytes(32,'big'))}
+        result=self.client.post('/auth/device/session',json=body)
+        self.assertEqual(result.status_code,200)
+        for attribute in ('Secure','HttpOnly','SameSite=lax','Path=/'):self.assertIn(attribute,result.headers['set-cookie'])
+        self.assertEqual(self.client.get('/auth/session').json()['workspace']['user']['id'],42)
+        self.assertEqual(self.client.post('/auth/device/session',json=body).status_code,401)
+        self.assertEqual(self.client.post('/v2/e2ee/auth/registry',json={}).status_code,401)
 
     def test_cookie_session_csrf_origin_and_logout_revocation(self):
         token,csrf=self.browser_session()

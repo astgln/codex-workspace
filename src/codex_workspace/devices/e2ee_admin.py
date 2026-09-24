@@ -64,6 +64,7 @@ def main():
         cmd.add_argument('--package',type=Path,required=True);cmd.add_argument('--code-file',type=Path,required=True)
     invite=sub.add_parser('pair');invite.add_argument('--catalog',type=Path,required=True);invite.add_argument('--link-file',type=Path,required=True)
     revoke=sub.add_parser('revoke');revoke.add_argument('device')
+    auth=sub.add_parser('auth-pin');auth.add_argument('--output',type=Path,required=True)
     sub.add_parser('status');sub.add_parser('reconcile')
     restore=sub.add_parser('restore');restore.add_argument('--package',type=Path,required=True);restore.add_argument('--code-file',type=Path,required=True)
     restore.add_argument('--origin',required=True);restore.add_argument('--minimum-revision',type=int,required=True)
@@ -89,6 +90,10 @@ def main():
                 print('Restored locally with rotated epochs. Devices must be paired again.')
                 return
             with KeyVault(path) as vault:
+                if args.command=='auth-pin':
+                    from codex_workspace.crypto.workspace_crypto import public_bytes,encode
+                    write_private(args.output,json.dumps({'workspace':vault.workspace,'authority':encode(public_bytes(vault.authority))})+'\n')
+                    print('Public authentication authority pin saved.');return
                 if args.command=='backup':
                     vault.assert_ready();backup(vault,args.package,args.code_file);print('Recovery package saved locally.');return
                 with TrustStore(args.state/'web-queue.sqlite3',vault.workspace) as trust:
@@ -99,7 +104,11 @@ def main():
                     api=API(config,state=args.state)
                     delivery=DeviceKeys(vault,trust,SealedChannel(api,vault))
                     if args.command=='reconcile':delivery.reconcile();print('Local transition reconciled.');return
-                    if args.command=='revoke':delivery.revoke(args.device);delivery.publish();print('Device revoked; surviving devices received rotated keys.');return
+                    if args.command=='revoke':
+                        delivery.revoke(args.device);delivery.publish()
+                        from codex_workspace.devices.auth_registry import publish
+                        publish(api,vault,trust)
+                        print('Device revoked; surviving devices received rotated keys.');return
                     scopes=scopes_from_catalog(args.catalog)
                     for scope in scopes:vault.scope_key(scope)
                     pairing=PairingChannel(api,vault,trust)
@@ -111,7 +120,10 @@ def main():
                     try:
                         while time.time()<invitation['expires']:
                             if pairing.poll(invitation['id'],scopes):
-                                delivery.publish();print('Device paired.');return
+                                delivery.publish()
+                                from codex_workspace.devices.auth_registry import publish
+                                publish(api,vault,trust)
+                                print('Device paired.');return
                             time.sleep(2)
                         raise CryptoError('Pairing expired')
                     finally:
