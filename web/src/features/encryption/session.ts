@@ -1,6 +1,5 @@
 import {assembleResponse} from './response';
 import type {WorkspaceState,HistoryPage,Message} from '../../shared/api/types';
-import {requireEncryptedTransport} from '../../shared/api/transport';
 import {loadDevice,type Device} from './vault';
 import {refreshDeviceKeys,readVerifiedRecords} from './records';
 import {decode} from './envelope';
@@ -38,10 +37,9 @@ export async function initializeEncryption(state:ModeState):Promise<ModeState>{
  if(session&&(session.account!==account||session.workspace!==state.encryption?.workspace)){session=null;manifests.clear();pending.clear();downloads.clear();}
  const pin=await stored<string>('pins',account);
  if(version!==generation)throw new Error('Сессия изменилась.');
- if(pin||state.encryption)requireEncryptedTransport();
  if(!state.encryption){
   if(pin)throw new Error('Сервер предлагает отключить E2EE. Соединение остановлено.');
-  clearEncryptedSession();return state;
+  clearEncryptedSession();throw new Error('Сервер не настроен для E2EE.');
  }
  const mode=state.encryption;
  if(mode.v!==1||typeof mode.workspace!=='string')throw new Error('Неподдерживаемый режим E2EE.');
@@ -95,7 +93,7 @@ export async function encryptedState():Promise<ModeState>{
  return {...s.state,projects,threads,messages:[...messages,...pending.values()],weekly_quota:quota,catalog_updated:index.updated_at,collector_seen:index.updated_at,encryption_locked:false};
 }
 
-export async function encryptedHistory(thread:string):Promise<HistoryPage>{
+export async function encryptedHistory(thread:string,_before?:string):Promise<HistoryPage>{
  const s=current();const records=await readVerifiedRecords(s.device,thread,'history');check(s);
  const messages=[...records.entries()].filter(([key])=>key!=='checkpoint').map(([,value])=>value.value) as HistoryPage['messages'];
  const checkpoint=records.get('checkpoint')?.value as {synced_at:number}|undefined;

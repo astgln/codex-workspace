@@ -4,7 +4,7 @@ test('pairing fragment is removed before session requests and errors never echo 
  const requests:string[]=[];
  await page.route('**/auth/session',async route=>{
    expect(await page.evaluate(()=>location.hash)).toBe('');
-   return route.fulfill({json:{csrf:'test',workspace:{user:{id:10},threads:[],messages:[],collector_seen:null}}});
+   return route.fulfill({json:{csrf:'test',workspace:{user:{id:10},threads:[],messages:[],collector_seen:null,encryption:{v:1,workspace:"A".repeat(43)}}}});
  });
  page.on('request',r=>requests.push(r.url()+' '+(r.postData()||'')));
  await page.route('**/web/**',r=>r.fulfill({json:{messages:[],pending:false}}));
@@ -32,7 +32,7 @@ for(const paste of [false,true])test(`trusted link completes pairing and persist
  // Serve the same local build through a test-only HTTPS origin for origin pinning.
  await page.route('https://workspace.test/**',async route=>{
    const url=new URL(route.request().url());
-   if(url.pathname==='/auth/session')return route.fulfill({json:{csrf:'test',workspace:{user:{id:10},threads:[],messages:[],collector_seen:null,...(paste?{encryption:{v:1,workspace:fixture.invite.workspace}}:{})}}});
+   if(url.pathname==='/auth/session')return route.fulfill({json:{csrf:'test',workspace:{user:{id:10},threads:[],messages:[],collector_seen:null,encryption:{v:1,workspace:fixture.invite.workspace}}}});
    if(url.pathname==='/web/e2ee/pairing/offer'){
      const offer=route.request().postDataJSON();
      expect(JSON.stringify(offer)).not.toContain(fixture.invite.secret);

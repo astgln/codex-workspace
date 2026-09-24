@@ -1,4 +1,2 @@
-import {encryptedActive,encryptedHistory} from '../../features/encryption/client';
-import { request } from './transport';
-import type { HistoryPage } from './types';
-export const fetchHistory=(thread:string,before?:string)=>encryptedActive()?encryptedHistory(thread):request<HistoryPage>('/web/history',{thread,...(before?{before}:{})});
+import {encryptedHistory} from '../../features/encryption/client';
+export const fetchHistory=encryptedHistory;

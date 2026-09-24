@@ -1,5 +1,10 @@
 import {test,expect} from '@playwright/test';
 
+// Presentation boundary only; encrypted-client tests retain the real client.
+test.beforeEach(async({context})=>{
+ await context.route('**/src/features/encryption/client.ts',route=>route.fulfill({contentType:'application/javascript',body:'export * from "/tests/fixtures/presentation-client.ts";'}));
+});
+
 const catalog=()=>({user:{id:10,role:'owner'},projects:[{id:'old',title:'Annatar'},{id:'new',title:'Workspace'}],threads:[
  {id:'thread-old',project_id:'old',title:'Old task',status:'idle',updated_at:100},
  {id:'thread-second',project_id:'new',title:'Second task',status:'idle',updated_at:200},

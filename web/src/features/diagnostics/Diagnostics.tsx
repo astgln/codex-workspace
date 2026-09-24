@@ -1,6 +1,5 @@
-import {encryptedActive,encryptedDiagnostics} from '../encryption/client';
+import {encryptedDiagnostics} from '../encryption/client';
 import { useState } from 'react';
-import { request } from '../../shared/api/transport';
 
 type Status = {
   collector_recent:boolean; collector_seen:number|null; history_synced:number|null;
@@ -16,7 +15,7 @@ export function Diagnostics(){
   const [error,setError]=useState('');
   const refresh=async()=>{
     setBusy(true);setError('');
-    try{setStatus(encryptedActive()?await encryptedDiagnostics():await request<Status>('/web/diagnostics',{}));}
+    try{setStatus(await encryptedDiagnostics());}
     catch(error){setError(error instanceof Error?error.message:'Диагностика недоступна.');}
     finally{setBusy(false);}
   };
@@ -24,7 +23,7 @@ export function Diagnostics(){
     <summary>Состояние сервиса</summary>
     {status&&<>
       <p>{status.collector_recent?'Обработчик на связи':'Связь с обработчиком давно не обновлялась'}</p>
-      <p className="muted">Связь: {date(status.collector_seen)}{!encryptedActive()&&<><br/>История: {date(status.history_synced)}</>}</p>
+      <p className="muted">Связь: {date(status.collector_seen)}</p>
       <p>В очереди: {status.queue.queued}<br/>Готовых ответов: {status.completed}</p>
       {status.worker&&<div>
         <p className="muted">Последний проход: {date(status.worker.observed_at)}. Во время выполнения запроса эти данные могут не обновляться.</p>

@@ -1,5 +1,10 @@
 import { test, expect, type Page } from '@playwright/test';
 
+// Presentation boundary only; encrypted-client tests retain the real client.
+test.beforeEach(async({context})=>{
+ await context.route('**/src/features/encryption/client.ts',route=>route.fulfill({contentType:'application/javascript',body:'export * from "/tests/fixtures/presentation-client.ts";'}));
+});
+
 async function fixture(page: Page) {
   const threads = [{id:'thread-launcher',title:'Launcher',status:'idle'}, {id:'thread-hd',title:'HD',status:'idle'}];
   const state = {weekly_quota:{used_percent:63,observed_at:Math.floor(Date.now()/1000),resets_at:Math.floor(Date.now()/1000)+86400},user:{id:10},threads,messages:[] as any[],catalog_updated:1,collector_seen:Date.now()/1000};
@@ -24,7 +29,7 @@ async function fixture(page: Page) {
     else if(path==='/web/login/session'){loggedIn=true;output={ok:true};}
     else if(path==='/web/state')output=state;
     else if(path==='/web/diagnostics')output={worker:{status:'waiting_for_tasks',observed_at:1,waiting:{desktop_writer_lock:2,task_settings_unavailable:1},unresolved:3},collector_recent:true,collector_seen:1,history_synced:1,queue:{queued:2},completed:5,notifications:{devices:1,retrying:0,uncertain:1}};
-    else if(path==='/web/push/config')output={public_key:'test-key'};
+    else if(path==='/web/e2ee/push/config')output={public_key:'test-key'};
     else if(path==='/web/history')output={messages:[],before:null,synced_at:1,loading_older:false,pending:false};
     else if(path==='/web/messages'){
       sent.push(body); const item={...body,id:-sent.length,sender:state.user.id,status:'queued',snapshot:'immutable-snapshot',created:Date.now()/1000,expires:Date.now()/1000+86400};state.messages.push(item);output=item;
@@ -469,7 +474,7 @@ test('phone notification control reports subscription after an explicit permissi
   });
   await fixture(page);
   const subscriptions:any[]=[];
-  await page.route('**/web/push/subscribe',route=>{subscriptions.push(route.request().postDataJSON());return route.fulfill({json:{ok:true}});});
+  await page.route('**/web/e2ee/push/subscribe',route=>{subscriptions.push(route.request().postDataJSON());return route.fulfill({json:{ok:true}});});
   await page.getByRole('button',{name:'Открыть треды'}).click();
   await page.getByText('Уведомления: выключены',{exact:true}).click();
   await page.getByRole('button',{name:'Включить уведомления',exact:true}).click();

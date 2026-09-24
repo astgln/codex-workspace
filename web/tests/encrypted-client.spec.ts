@@ -110,3 +110,22 @@ test('encrypted session restores catalog/history, sends only ciphertext and reje
  expect(preview.valid.body).toBe('private push text');
  expect(preview.invalid.body).toBe('Новое зашифрованное сообщение');
 });
+
+test('fresh browser refuses an unencrypted workspace and content endpoints before enrollment',async({page})=>{
+ await page.goto('/');
+ const result=await page.evaluate(async()=>{
+  // @ts-expect-error Vite test module
+  const client=await import('/src/features/encryption/client.ts');
+  // @ts-expect-error Vite test module
+  const transport=await import('/src/shared/api/transport.ts');
+  const failures:string[]=[];
+  try{await client.initializeEncryption({user:{id:98765},threads:[],messages:[]});}catch(error){failures.push(String(error));}
+  for(const path of ['/web/state','/web/messages','/web/history','/web/uploads/start','/web/diagnostics','/web/push/subscribe']){
+   try{await transport.request(path,{});}catch(error){failures.push(String(error));}
+  }
+  return failures;
+ });
+ expect(result).toHaveLength(7);
+ expect(result[0]).toContain('Сервер не настроен для E2EE');
+ expect(result.slice(1).every(value=>value.includes('Передача открытого текста отключена'))).toBe(true);
+});
