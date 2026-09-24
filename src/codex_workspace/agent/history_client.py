@@ -1,13 +1,8 @@
 #!/usr/bin/env python3
 """Publish public messages returned by the authorized Codex read_thread tool."""
-import argparse
 import json
-import re
-import os
-from pathlib import Path
-from codex_workspace.agent.runtime_support import BridgeError, exclusive
+from codex_workspace.agent.runtime_support import BridgeError
 from codex_workspace.domain.redaction import public_text
-from codex_workspace.agent.workspace_client import API, STATE
 
 
 def messages(read):
@@ -59,29 +54,3 @@ def sync_catalog(api, catalog, project, root):
     service_failures = {}
     count = sync_once(api, catalog, project, root, {}, failures, service_failures)
     return {'messages': count, 'failed_tasks': len(failures), 'failed_services': sorted(service_failures)}
-
-
-def main():
-    parser=argparse.ArgumentParser();sub=parser.add_subparsers(dest='command',required=True)
-    sub.add_parser('pending');command=sub.add_parser('publish');command.add_argument('file',type=Path);command.add_argument('--mode',choices=['latest','older'],required=True)
-    sync=sub.add_parser('sync');sync.add_argument('--catalog',type=Path,required=True)
-    args=parser.parse_args()
-    try:
-        config=json.loads((STATE/'web.json').read_text())
-        if config.get('paused',True):print('{"status":"paused"}');return
-        with exclusive(STATE):
-            api=API(config)
-            if args.command=='sync':
-                catalog=json.loads(args.catalog.read_text())
-                root=Path(os.environ.get('CODEX_HOME',Path.home()/'.codex'))/'sessions'
-                result=sync_catalog(api,catalog,config['project_id'],root)
-            else:
-                result=api.call('/v2/history/pending',{}) if args.command=='pending' else publish(api,json.loads(args.file.read_text()),args.mode)
-        print(json.dumps(result,ensure_ascii=False))
-        if result.get('failed_tasks') or result.get('failed_services'):
-            raise SystemExit(1)
-    except (BridgeError,OSError,ValueError,KeyError):
-        raise SystemExit('History sync failed; content and credentials hidden')
-
-
-if __name__=='__main__':main()
