@@ -11,7 +11,6 @@ COMMANDS = {
     ('service','install'): 'ops.install_cli_service',
     ('deploy',): 'ops.release_vm',
     ('provision',): 'ops.deploy_vm',
-    ('client',): 'agent.web_client',
 }
 
 

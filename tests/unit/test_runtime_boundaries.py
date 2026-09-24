@@ -13,7 +13,7 @@ for name in ('bridge', 'cloud_client', 'codex_workspace.domain.runtime', 'legacy
 import codex_workspace.agent.cli_worker
 import codex_workspace.agent.history_watch
 import codex_workspace.agent.history_client
-import codex_workspace.agent.web_client
+import codex_workspace.agent.local_queue
 '''
         result = subprocess.run([sys.executable, '-c', source], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)

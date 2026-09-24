@@ -63,7 +63,7 @@ SSH host key берётся из аутентифицированного Comput
 Сохраните конфигурацию приватно; не копируйте её в сообщения или отчёты.
 
 ```sh
-codex-workspace client catalog /absolute/path/to/catalog.json
+codex-workspace history sync --catalog /absolute/path/to/catalog.json
 codex-workspace service install --codex /absolute/path/to/codex \
   --catalog /absolute/path/to/catalog.json
 codex-workspace history watch --catalog /absolute/path/to/catalog.json

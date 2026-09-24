@@ -9,10 +9,8 @@ import time
 
 from codex_workspace.agent.runtime_support import BridgeError, exclusive
 from codex_workspace.agent.workspace_client import API, STATE
-from codex_workspace.agent.local_queue import Queue
 from codex_workspace.agent.worker_dispatch import dispatch_one
 from codex_workspace.agent.worker_lifecycle import shutdown_event
-from codex_workspace.agent.worker_health import publish as publish_health
 
 
 def main():
@@ -46,30 +44,23 @@ def serve(args, home, stop):
                 raise BridgeError('Project mismatch')
             with exclusive(args.state):
                 from codex_workspace.agent.encryption_mode import encrypted_required
-                encrypted = encrypted_required(args.state)
+                if not encrypted_required(args.state):
+                    raise BridgeError('Encryption must be initialized before starting the collector')
                 vault = None
                 queue = None
                 try:
                     api=API(config, state=args.state)
-                    if encrypted:
-                        from codex_workspace.devices.key_vault import KeyVault
-                        from codex_workspace.agent.sealed_runtime import SealedRuntime
-                        vault=KeyVault(args.state/'e2ee-keys.sqlite3')
-                        queue=SealedRuntime(args.state,vault,api,catalog)
-                        queue.tick()
-                        result=dispatch_one(queue,home,args.codex,catalog,api=queue.api,should_stop=stop.is_set)
-                        queue.tick()
-                        queue.health(result)
-                    else:
-                        queue=Queue(args.state)
-                        queue.tick(api)
-                        result=dispatch_one(queue,home,args.codex,catalog,api=api,should_stop=stop.is_set)
-                        queue.tick(api)
-                        publish_health(api, result)
+                    from codex_workspace.devices.key_vault import KeyVault
+                    from codex_workspace.agent.sealed_runtime import SealedRuntime
+                    vault=KeyVault(args.state/'e2ee-keys.sqlite3')
+                    queue=SealedRuntime(args.state,vault,api,catalog)
+                    queue.tick()
+                    result=dispatch_one(queue,home,args.codex,catalog,api=queue.api,should_stop=stop.is_set)
+                    queue.tick()
+                    queue.health(result)
                 finally:
                     if queue is not None:
-                        if encrypted:queue.close()
-                        else:queue.db.close()
+                        queue.close()
                     if vault is not None:vault.db.close()
             status_path=args.state/'cli-worker-status.json'
             temporary=status_path.with_suffix('.tmp')

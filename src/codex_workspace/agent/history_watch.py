@@ -59,19 +59,7 @@ def main():
                     if args.once:return
                     time.sleep(args.interval)
                     continue
-                catalog = refresh(api, args.catalog, root.parent, cache)
-                failures = {}
-                service_failures = {}
-                count = sync_once(api, catalog, config['project_id'], root, cache, failures, service_failures)
-                temp = cache_path.with_suffix('.tmp')
-                temp.write_text(json.dumps(cache));temp.replace(cache_path)
-                partial = bool(failures or service_failures)
-                if count or args.once or partial != previous_error:
-                    print(json.dumps({'status':'partial' if partial else 'synced',
-                                      'messages':count,'failed_tasks':len(failures),'failed_services':sorted(service_failures)}), flush=True)
-                previous_error = partial
-                if args.once and partial:
-                    raise SystemExit(1)
+                raise BridgeError('Encryption must be initialized before starting history sync')
             except (BridgeError, OSError, ValueError, KeyError):
                 if not previous_error:
                     print('{"status":"history_sync_failed","retry":true}', flush=True)

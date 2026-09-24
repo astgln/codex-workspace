@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import patch, Mock
 
 from codex_workspace.agent.worker_dispatch import dispatch_one
-from codex_workspace.agent.web_client import Queue
+from codex_workspace.agent.local_queue import Queue
 
 T='11111111-1111-1111-1111-111111111111'
 U='22222222-2222-2222-2222-222222222222'

@@ -30,7 +30,8 @@ class API:
 
     def call(self, path, body):
         from codex_workspace.agent.encryption_mode import encrypted_required
-        if encrypted_required(getattr(self,'state',STATE)) and not (isinstance(path,str) and path.startswith('/v2/e2ee/')):
+        encrypted_required(getattr(self,'state',STATE))  # Validate any existing pin.
+        if not (isinstance(path,str) and path.startswith('/v2/e2ee/')):
             raise BridgeError('Plaintext transport disabled by local encryption pin')
         if (not isinstance(path, str) or not path.startswith('/v2/')
                 or any(character in path for character in ('?', '#', '@', '\\'))

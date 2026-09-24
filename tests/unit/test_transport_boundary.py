@@ -27,3 +27,27 @@ class TransportBoundaryTests(TestCase):
             with patch('urllib.request.build_opener') as network:
                 with self.assertRaises(BridgeError):api.call('/v2/e2ee/read',{})
                 network.assert_not_called()
+
+    def test_missing_pin_does_not_enable_plaintext_network_routes(self):
+        with TemporaryDirectory() as temp:
+            api=object.__new__(API);api.state=Path(temp)
+            with patch('urllib.request.build_opener') as network:
+                for path in ('/v2/catalog','/v2/history/publish','/v2/inbox/claim','/v2/usage'):
+                    with self.subTest(path=path),self.assertRaises(BridgeError):api.call(path,{})
+                network.assert_not_called()
+
+    def test_collector_without_encryption_does_not_open_queue_or_network(self):
+        import json
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        from codex_workspace.agent.cli_worker import serve
+        with TemporaryDirectory() as temp:
+            root=Path(temp)
+            (root/'web.json').write_text(json.dumps({'paused':False,'project_id':'installation'}))
+            catalog=root/'catalog.json';catalog.write_text(json.dumps({'project_id':'installation'}))
+            args=SimpleNamespace(state=root,catalog=catalog,codex=None,once=True,interval=1)
+            stop=Mock();stop.is_set.return_value=False
+            with patch('codex_workspace.agent.cli_worker.API') as api:
+                self.assertEqual(serve(args,root,stop),1)
+                api.assert_not_called()
+            self.assertFalse((root/'web-queue.sqlite3').exists())
