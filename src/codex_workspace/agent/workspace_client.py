@@ -48,6 +48,8 @@ class API:
                     raise BridgeError('Invalid cloud response')
                 return result
         except urllib.error.HTTPError as exc:
+            if exc.code == 507:
+                raise BridgeError('Encrypted relay storage is full; increase server capacity without resetting keys or history') from None
             if exc.code == 409:
                 raise Conflict() from None
             raise BridgeError('Cloud HTTP ' + str(exc.code) + '; details hidden') from None

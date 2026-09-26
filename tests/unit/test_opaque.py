@@ -43,6 +43,23 @@ class OpaqueRelayTests(unittest.TestCase):
         self.assertNotIn('sensitive-test-content', dump)
         self.assertNotIn(encode(self.key), dump)
 
+    def test_capacity_is_distinct_from_conflict_and_preserves_existing_records(self):
+        from unittest.mock import patch
+        first = self.envelope()
+        with patch.object(opaque, 'MAX_RECORDS', 1):
+            opaque.publish(self.store, {'envelope': first})
+            self.assertTrue(opaque.publish(self.store, {'envelope': first})['duplicate'])
+            with self.assertRaises(opaque.CapacityExceeded):
+                opaque.publish(self.store, {'envelope': self.envelope(record='second')})
+            opaque.publish(self.store, {'envelope': self.envelope(revision=2)})
+            self.assertEqual(len(self.read()['records']), 1)
+        with patch.object(opaque, 'MAX_STORAGE', 1):
+            with self.assertRaises(opaque.CapacityExceeded):
+                opaque.publish(self.store, {'envelope': self.envelope(revision=3)})
+        self.assertEqual(self.read()['records'][0]['envelope']['context'][4], 2)
+        opaque.publish(self.store, {'envelope': self.envelope(record='second')})
+        self.assertEqual(len(self.read()['records']), 2)
+
     def test_monotonic_revisions_and_exact_retries(self):
         first = self.envelope()
         opaque.publish(self.store, {'envelope': first})

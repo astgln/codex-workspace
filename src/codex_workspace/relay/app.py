@@ -197,6 +197,7 @@ async def handle(request: Request, path: str):
             result = api.response(200,value)
         except workspace.Unauthorized:result=api.response(401,{'error':'login_required'})
         except workspace.Forbidden:result=api.response(403,{'error':'access_denied'})
+        except opaque.CapacityExceeded:result=api.response(507,{'error':'encrypted_storage_full'})
         except opaque.Conflict:result=api.response(409,{'error':'encrypted_conflict'})
         except (ValueError,TypeError,RecursionError):result=api.response(400,{'error':'invalid_encrypted_record'})
         except Exception:result=api.response(503,{'error':'temporarily_unavailable'})

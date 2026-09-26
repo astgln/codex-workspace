@@ -7,13 +7,17 @@ import time
 
 MAX_CIPHERTEXT = 68000
 MAX_STORAGE = 100 * 1024 * 1024
-MAX_RECORDS = 10000
+MAX_RECORDS = 100000
 KINDS = frozenset(('request', 'response', 'history', 'catalog', 'push', 'key-wrap', 'control', 'control-result'))
 FIELDS = frozenset(('v', 'context', 'key_id', 'signer', 'salt', 'nonce', 'ciphertext', 'signature'))
 
 
 class Invalid(ValueError):
     pass
+
+
+class CapacityExceeded(ValueError):
+    """Storage is full; retrying a different revision cannot resolve it."""
 
 
 class Conflict(ValueError):
@@ -94,7 +98,7 @@ def publish(store, body, *, browser=False):
             raise Conflict('Encrypted revision conflict')
         count, total = db.execute('SELECT count(*),coalesce(sum(length(envelope)),0) FROM opaque_records').fetchone()
         if (not existing and count >= MAX_RECORDS) or total - (existing[3] if existing else 0) + len(encoded) > MAX_STORAGE:
-            raise Conflict('Encrypted storage quota exceeded')
+            raise CapacityExceeded('Encrypted storage quota exceeded')
         db.execute('UPDATE opaque_sequence SET value=value+1 WHERE id=1')
         sequence = db.execute('SELECT value FROM opaque_sequence WHERE id=1').fetchone()[0]
         db.execute('''INSERT INTO opaque_records VALUES(?,?,?,?,?,?,?,?,?)
