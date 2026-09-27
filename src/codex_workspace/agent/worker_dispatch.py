@@ -1,5 +1,8 @@
 """Coordinate permission preflight, durable dispatch intent and recovery."""
 import json
+import os
+from pathlib import Path
+from codex_workspace.agent.task_relocation import apply as relocate
 import subprocess
 from codex_workspace.agent.runtime_support import BridgeError
 from codex_workspace.codex.cli_session import snapshot, command
@@ -21,12 +24,17 @@ def dispatch_one(queue, home, executable, catalog, run=None, *, api, should_stop
         unresolved = queue.db.execute("SELECT 1 FROM requests WHERE status IN ('dispatching','dispatched') AND json_extract(payload,'$.thread')=?",(item['thread'],)).fetchone()
         if unresolved:
             continue
+        if should_stop():
+            return {"status": "stopping"}
         try:
             state = snapshot(home,item['thread'])
             if state['status'] != 'ready':
                 waiting.append({'id':item['id'],'reason':'desktop_writer_lock'})
                 continue
+            state = relocate(state, queue.state)
             args = command(executable,state)
+            if run is None and (not Path(state["settings"]["cwd"]).is_dir() or not Path(args[0]).is_file() or not os.access(args[0],os.X_OK)):
+                raise BridgeError("CLI executable or task directory unavailable")
         except (BridgeError,OSError,ValueError,KeyError):
             # One unsupported task must not stop unrelated queued requests.
             # No dispatch intent is created until settings can be preserved.

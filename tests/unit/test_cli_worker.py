@@ -30,6 +30,12 @@ class WorkerTests(unittest.TestCase):
         self.state={'status':'ready','baseline':U,'thread':T,'settings':{'cwd':str(self.home)}}
         self.calls=0
 
+    def test_missing_cli_does_not_create_dispatch_intent(self):
+        with patch('codex_workspace.agent.worker_dispatch.snapshot',return_value=self.state), patch('codex_workspace.agent.worker_dispatch.command',return_value=['/missing/codex']):
+            result=dispatch_one(self.q,self.home,Path('/missing/codex'),self.catalog,api=self.api)
+        self.assertEqual(result['status'],'waiting_for_tasks')
+        self.assertEqual(self.q.db.execute('SELECT status FROM requests WHERE id=-1').fetchone()[0],'pending')
+
     def run_cli(self,args,**kwargs):
         self.calls+=1
         self.assertEqual(kwargs['input'].count('$(touch SHOULD_NOT_EXIST)'),1)
