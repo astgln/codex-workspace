@@ -21,7 +21,13 @@ def apply(state, directory):
     entry=json.loads(path.read_text()).get(state['thread'])
     if entry is None:return state
     settings=state['settings']
-    if set(entry)!={'from','to','settings_sha256'} or fingerprint(settings)!=entry['settings_sha256'] or settings['cwd']!=entry['from']:
+    if set(entry)-{'from','to','settings_sha256','relocated_settings_sha256'} or not {'from','to','settings_sha256'}<=set(entry):
+        raise BridgeError('Invalid task relocation configuration')
+    if settings['cwd']==entry['to']:
+        if fingerprint(settings)!=entry.get('relocated_settings_sha256'):
+            raise BridgeError('Relocated task permissions changed; review required')
+        return state
+    if fingerprint(settings)!=entry['settings_sha256'] or settings['cwd']!=entry['from']:
         raise BridgeError('Task settings changed; relocation requires review')
     old,new=Path(entry['from']),Path(entry['to'])
     if not old.is_absolute() or not new.is_absolute() or not new.is_dir() or new.resolve()!=new:

@@ -15,6 +15,11 @@ class RelocationTests(unittest.TestCase):
             self.assertEqual(apply(state,root),state)
             p=root/'task-relocations.json';p.write_text(json.dumps({'task':{'from':'/old','to':str(target),'settings_sha256':fingerprint(state['settings'])}}));p.chmod(0o600)
             result=apply(state,root)['settings'];self.assertEqual(result['cwd'],str(target));self.assertEqual(result['runtime_workspace_roots'],[str(target)])
+            config=json.loads(p.read_text());config['task']['relocated_settings_sha256']=fingerprint(result);p.write_text(json.dumps(config))
+            self.assertEqual(apply({'thread':'task','settings':result},root)['settings'],result)
+            import copy
+            weakened=copy.deepcopy(result);weakened['permission_profile']['network']='enabled'
+            with self.assertRaises(BridgeError):apply({'thread':'task','settings':weakened},root)
             entries=result['permission_profile']['file_system']['entries'];self.assertEqual(entries[1],{'path':{'type':'path','path':str(target/'.git')},'access':'read'});self.assertEqual(entries[2]['path']['path'],'/outside')
             self.assertEqual(result['permission_profile']['network'],'restricted');self.assertEqual(state['settings']['cwd'],'/old')
             state['settings']['permission_profile']['network']='enabled'
