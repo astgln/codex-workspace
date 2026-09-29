@@ -27,6 +27,26 @@ class SealedQueue:
         self.trust.db.close()
         self.queue.db.close()
 
+    def expire_pending(self, *, now=None):
+        """Fail signed requests whose verified intake deadline passed before dispatch."""
+        current = int(time.time() if now is None else now)
+        with self.queue.db:
+            for row in self.queue.db.execute(
+                "SELECT id,payload FROM requests WHERE status='pending' AND dispatch IS NULL"
+            ).fetchall():
+                item = json.loads(row['payload'])
+                if (not isinstance(item.get('encrypted_envelope'), dict)
+                        or type(item.get('expires')) is not int or item['expires'] > current):
+                    continue
+                result = {'id': row['id'], 'thread': item['thread'], 'revision': 1,
+                          'status': 'failed', 'events': [{'type': 'error',
+                          'message': 'Срок действия подписанного запроса истёк до запуска. Отправьте новый запрос, если он ещё нужен.',
+                          'severity': 'warning'}]}
+                self.queue.db.execute(
+                    "UPDATE requests SET status='publishing',result=?,revision=1 "
+                    "WHERE id=? AND status='pending' AND dispatch IS NULL AND revision=0",
+                    (json.dumps(result, ensure_ascii=False), row['id']))
+
     def receive(self, scope, entry, *, now=None):
         envelope = entry.get('envelope') if isinstance(entry, dict) else None
         if not isinstance(envelope, dict) or not isinstance(envelope.get('context'), list) or len(envelope['context']) != 5:

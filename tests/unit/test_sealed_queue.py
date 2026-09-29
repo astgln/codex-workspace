@@ -63,6 +63,19 @@ class SealedQueueTests(unittest.TestCase):
         with self.assertRaises(CryptoError):self.queue.begin(ident,'task','baseline',now=1002)
         self.assertEqual(self.queue.queue.pending()['messages'][0]['local_status'],'pending')
 
+    def test_expired_pending_request_becomes_failed_without_dispatch(self):
+        ident=self.queue.receive('task',self.entry(),now=1001)
+        self.queue.expire_pending(now=1599)
+        self.assertEqual(self.queue.queue.pending()['messages'][0]['local_status'],'pending')
+        self.queue.expire_pending(now=1600)
+        row=self.queue.queue.db.execute('SELECT status,dispatch,result,revision FROM requests WHERE id=?',(ident,)).fetchone()
+        self.assertEqual(row['status'],'publishing')
+        self.assertIsNone(row['dispatch'])
+        self.assertEqual(row['revision'],1)
+        self.assertEqual(json.loads(row['result'])['status'],'failed')
+        self.queue.expire_pending(now=1601)
+        self.assertEqual(self.queue.queue.db.execute('SELECT revision FROM requests WHERE id=?',(ident,)).fetchone()[0],1)
+
     def test_plaintext_worker_cannot_dispatch_encrypted_request(self):
         ident=self.queue.receive('task',self.entry(),now=1001)
         api=Mock()

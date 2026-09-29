@@ -64,6 +64,7 @@ class SealedRuntime:
 
     def tick(self):
         from codex_workspace.agent.queue_transport import publish_results
+        self.sealed.expire_pending()
         from codex_workspace.devices.device_keys import DeviceKeys
         delivery=DeviceKeys(self.channel.vault,self.sealed.trust,self.channel)
         delivery.sync_owner_scopes(self.catalog_scopes)
@@ -137,4 +138,3 @@ class EncryptedWorkerAPI:
             stamp=self.runtime.db.execute('SELECT created FROM encrypted_push_times WHERE id=?',(item['id'],)).fetchone()[0]
             publish(self.runtime.channel,item['thread'],'answer:'+body.get('turn_id',item['request_id']),self.runtime.titles[item['thread']],text,stamp)
         return result
-
