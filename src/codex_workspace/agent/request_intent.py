@@ -4,7 +4,7 @@ import re
 
 from codex_workspace.crypto.workspace_crypto import Context, CryptoError, decode
 
-MAX_REQUEST_AGE = 24 * 60 * 60
+MAX_REQUEST_AGE = 7 * 24 * 60 * 60
 FIELDS = frozenset(('v', 'workspace', 'thread', 'request_id', 'issued_at', 'expires_at', 'text', 'attachments'))
 FILE_FIELDS = frozenset(('id', 'name', 'size', 'sha256', 'ciphertext_sha256'))
 

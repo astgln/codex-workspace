@@ -22,7 +22,7 @@ export async function encryptedSend(thread:string,text:string,id:string,files:st
   const key=s.device.bundle!.keys.filter(k=>k.scope===thread).sort((a,b)=>b.epoch-a.epoch)[0];
   if(!key)throw new Error('Нет ключа задачи.');
   const record=encode(crypto.getRandomValues(new Uint8Array(32))),now=Math.floor(Date.now()/1000);
-  const intent={v:1,workspace:s.workspace,thread,request_id:record,issued_at:now,expires_at:now+86400,text,attachments};
+  const intent={v:1,workspace:s.workspace,thread,request_id:record,issued_at:now,expires_at:now+7*86400,text,attachments};
   entry={envelope:await seal(decode(key.key,32,32),s.device.signing,[s.workspace,thread,'request',record,1],new TextEncoder().encode(JSON.stringify(intent)))};
   check(s);await stored('outbox',storageId,entry);
  }

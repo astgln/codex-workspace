@@ -1,7 +1,7 @@
 import json
 import unittest
 
-from codex_workspace.agent.request_intent import validate_request
+from codex_workspace.agent.request_intent import MAX_REQUEST_AGE, validate_request
 from codex_workspace.crypto.workspace_crypto import Context, CryptoError, encode
 
 
@@ -13,10 +13,12 @@ class RequestIntentTests(unittest.TestCase):
 
     def test_valid_intent(self):
         self.assertEqual(validate_request(json.dumps(self.value).encode(), self.context, 1001), self.value)
+        week = dict(self.value, expires_at=1000 + MAX_REQUEST_AGE)
+        self.assertEqual(validate_request(json.dumps(week).encode(), self.context, 1001), week)
 
     def test_signed_but_stale_future_or_mismatched_intent_rejected(self):
         for updates in ({'expires_at': 1001}, {'issued_at': 1062}, {'issued_at': True}, {'v': True},
-                        {'expires_at': 1000 + 86401}, {'thread': 'other-task'}, {'workspace': 'other-workspace'},
+                        {'expires_at': 1000 + MAX_REQUEST_AGE + 1}, {'thread': 'other-task'}, {'workspace': 'other-workspace'},
                         {'request_id': encode(b'm' * 32)}, {'text': ''}, {'text': '\ud800'},
                         {'extra_untrusted_field': 'value'}):
             with self.subTest(updates=updates), self.assertRaises(CryptoError):
